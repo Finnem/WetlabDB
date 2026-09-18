@@ -136,22 +136,6 @@ export const api = {
     if (column) params.set("column", column);
     return `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(coll)}/csv/export?${params}`;
   },
-  exportSimilarityCsvUrl: (
-    db: string,
-    coll: string,
-    query: string,
-    cutoff: number,
-    metric: string,
-    sortAll: boolean
-  ) => {
-    const params = new URLSearchParams({
-      query,
-      cutoff: String(cutoff),
-      metric,
-      sort_all: String(sortAll),
-    });
-    return `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(coll)}/search/similarity.csv?${params}`;
-  },
   exportMolZip: async (db: string, coll: string, ids: string[]) => {
     const response = await fetch(
       `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(coll)}/mol/export`,

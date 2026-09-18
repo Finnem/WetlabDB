@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../api";
 import KetcherEditor, { looksLikeQuery } from "../components/KetcherEditor";
 import StructurePreview from "../components/StructurePreview";
+import { downloadSearchHitsCsv } from "../searchExport";
 import type { SearchMetrics, SimilarityHit, SubstructureHit } from "../types";
 
 export default function Search({ db, coll }: { db: string; coll: string }) {
@@ -13,6 +14,7 @@ export default function Search({ db, coll }: { db: string; coll: string }) {
   const [mode, setMode] = useState<"similarity" | "substructure">("similarity");
   const [error, setError] = useState("");
   const [drawing, setDrawing] = useState(false);
+  const [molExporting, setMolExporting] = useState(false);
 
   useEffect(() => {
     api.metrics().then((m) => {
@@ -54,6 +56,32 @@ export default function Search({ db, coll }: { db: string; coll: string }) {
     }
   }
 
+  function downloadCsv() {
+    if (hits.length === 0) return;
+    downloadSearchHitsCsv(hits, mode);
+  }
+
+  async function downloadMolZip() {
+    if (!db || !coll || hits.length === 0) return;
+    const ids = hits.map((h) => String(h.document._id)).filter(Boolean);
+    if (ids.length === 0) return;
+    setMolExporting(true);
+    setError("");
+    try {
+      const { blob, filename } = await api.exportMolZip(db, coll, ids);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "MOL export failed");
+    } finally {
+      setMolExporting(false);
+    }
+  }
+
   return (
     <div className="search-page">
       <div className="panel">
@@ -92,11 +120,22 @@ export default function Search({ db, coll }: { db: string; coll: string }) {
           <button className="secondary" onClick={runSubstructure}>
             Substructure
           </button>
-          <a href={api.exportSimilarityCsvUrl(db, coll, query, cutoff, metric, false)}>
-            <button type="button" className="secondary">
-              Download results
-            </button>
-          </a>
+          <button
+            type="button"
+            className="secondary"
+            disabled={hits.length === 0}
+            onClick={downloadCsv}
+          >
+            Download CSV
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={hits.length === 0 || molExporting}
+            onClick={() => downloadMolZip()}
+          >
+            {molExporting ? "Exporting…" : "Download Mol"}
+          </button>
         </div>
         {metrics?.descriptions[metric] && (
           <p className="muted">{metrics.descriptions[metric]}</p>

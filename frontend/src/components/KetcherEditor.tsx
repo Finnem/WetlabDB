@@ -14,6 +14,13 @@ const QUERY_ATOMS: { label: string; pseudo: string; title: string }[] = [
   { label: "*", pseudo: "AH", title: "Any atom, including H" },
 ];
 
+/** Ketcher Bond.PATTERN: TYPE.ANY + STEREO.NONE (query / SMARTS any bond ~). */
+const DEFAULT_BOND_TOOL_OPTS = { type: 8, stereo: 0 };
+
+function selectAnyBondTool(ketcher: KetcherHandle) {
+  ketcher.editor?.tool?.("bond", DEFAULT_BOND_TOOL_OPTS);
+}
+
 export function looksLikeQuery(text: string): boolean {
   return /\[[^\]]*,[^\]]*\]/.test(text) || text.includes("*") || /\[[^\]]*![^\]]*\]/.test(text);
 }
@@ -61,6 +68,7 @@ const LazyEditor = lazy(async () => {
           onInit={(ketcher: KetcherHandle) => {
             onReady(ketcher);
             if (initial) ketcher.setMolecule?.(initial);
+            selectAnyBondTool(ketcher);
           }}
         />
       </div>
