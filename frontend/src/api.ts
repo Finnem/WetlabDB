@@ -153,15 +153,28 @@ export const api = {
     coll: string,
     file: File,
     identifierCol: string,
-    dataCols: string[]
+    dataCols: string[],
+    onCollision: "append" | "overwrite" = "append"
   ) => {
     const form = new FormData();
     form.append("file", file);
     form.append("identifier_col", identifierCol);
     form.append("data_cols", dataCols.join(","));
-    return request<{ created: number; updated: number; total: number }>(
+    form.append("on_collision", onCollision);
+    const body = await request<{
+      created: number;
+      updated: number;
+      appended?: number;
+      total: number;
+    }>(
       `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(coll)}/csv/import`,
       { method: "POST", body: form }
     );
+    return {
+      created: body.created,
+      updated: body.updated,
+      appended: body.appended ?? 0,
+      total: body.total,
+    };
   },
 };

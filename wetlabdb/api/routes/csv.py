@@ -23,10 +23,14 @@ def csv_import(
     file: UploadFile,
     identifier_col: str = Form(...),
     data_cols: str = Form(...),
+    on_collision: str = Form("append"),
     coll=Depends(collection_or_404),
     _: User = Depends(get_current_user),
 ):
-    """Import a CSV. ``data_cols`` is a comma-separated list of column names."""
+    """Import a CSV. ``data_cols`` is a comma-separated list of column names.
+
+    ``on_collision`` is ``append`` (default) or ``overwrite``.
+    """
     raw = file.file.read()
     try:
         df = pd.read_csv(io.BytesIO(raw))
@@ -42,10 +46,16 @@ def csv_import(
         raise HTTPException(
             status_code=400, detail=f"Missing CSV columns: {missing}"
         )
-    summary = import_csv(coll, df, identifier_col, columns)
+    mode = on_collision.strip().lower()
+    if mode not in ("append", "overwrite"):
+        raise HTTPException(
+            status_code=400, detail="on_collision must be 'append' or 'overwrite'"
+        )
+    summary = import_csv(coll, df, identifier_col, columns, on_collision=mode)
     return {
         "created": summary.created,
         "updated": summary.updated,
+        "appended": summary.appended,
         "total": summary.total,
     }
 

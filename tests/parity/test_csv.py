@@ -10,7 +10,7 @@ import pandas as pd
 def test_import_creates_and_updates(admin_client):
     csv_text = "Name,SMILES\nAspirin,new-smiles\nBrandNew,CC\n"
     files = {"file": ("in.csv", csv_text, "text/csv")}
-    data = {"identifier_col": "Name", "data_cols": "SMILES"}
+    data = {"identifier_col": "Name", "data_cols": "SMILES", "on_collision": "overwrite"}
     response = admin_client.post(
         "/api/databases/WetlabDB/collections/Compounds/csv/import",
         files=files,
@@ -29,6 +29,26 @@ def test_import_creates_and_updates(admin_client):
     assert by_name["BrandNew"]["SMILES"] == "CC"
 
 
+def test_import_append_keeps_existing_and_sets_alternative_name(admin_client):
+    csv_text = "Name,SMILES\nAspirin,new-smiles\n"
+    response = admin_client.post(
+        "/api/databases/WetlabDB/collections/Compounds/csv/import",
+        files={"file": ("in.csv", csv_text, "text/csv")},
+        data={"identifier_col": "Name", "data_cols": "SMILES"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["created"] == 0
+    assert body["updated"] == 0
+    assert body["appended"] == 1
+    listed = admin_client.get(
+        "/api/databases/WetlabDB/collections/Compounds/compounds"
+    ).json()["compounds"]
+    aspirin = next(c for c in listed if c["Name"] == "Aspirin")
+    assert aspirin["SMILES"] != "new-smiles"
+    assert aspirin["alternative SMILES"] == "new-smiles"
+
+
 def test_import_skips_nan_identifier_and_preserves_nan_data(admin_client):
     seed = admin_client.post(
         "/api/databases/WetlabDB/collections/Compounds/compounds",
@@ -39,7 +59,7 @@ def test_import_skips_nan_identifier_and_preserves_nan_data(admin_client):
     response = admin_client.post(
         "/api/databases/WetlabDB/collections/Compounds/csv/import",
         files={"file": ("in.csv", csv_text, "text/csv")},
-        data={"identifier_col": "Name", "data_cols": "Pure"},
+        data={"identifier_col": "Name", "data_cols": "Pure", "on_collision": "overwrite"},
     )
     assert response.status_code == 200
     doc_id = seed.json()["_id"]

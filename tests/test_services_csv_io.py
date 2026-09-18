@@ -32,10 +32,80 @@ def test_import_creates_new_documents(collection):
 def test_import_updates_existing_documents(collection):
     collection.insert_one({"Name": "Aspirin", "SMILES": "old"})
     df = pd.DataFrame({"Name": ["Aspirin"], "SMILES": ["new"]})
-    summary = import_csv(collection, df, "Name", ["SMILES"])
+    summary = import_csv(
+        collection, df, "Name", ["SMILES"], on_collision="overwrite"
+    )
     assert summary.created == 0
     assert summary.updated == 1
+    assert summary.appended == 0
     assert collection.find_one({"Name": "Aspirin"})["SMILES"] == "new"
+
+
+def test_import_append_writes_alternative_on_collision(collection):
+    collection.insert_one({"Name": "Aspirin", "SMILES": "old", "CAS Nr": "50-78-2"})
+    df = pd.DataFrame(
+        {"CAS Nr": ["50-78-2"], "Name": ["Acetylsalicylic acid"], "SMILES": ["new"]}
+    )
+    summary = import_csv(
+        collection, df, "CAS Nr", ["Name", "SMILES"], on_collision="append"
+    )
+    assert summary.created == 0
+    assert summary.updated == 0
+    assert summary.appended == 1
+    doc = collection.find_one({"CAS Nr": "50-78-2"})
+    assert doc["Name"] == "Aspirin"
+    assert doc["alternative Name"] == "Acetylsalicylic acid"
+    assert doc["SMILES"] == "old"
+    assert doc["alternative SMILES"] == "new"
+
+
+def test_import_does_not_append_existing_identity(collection):
+    collection.insert_one(
+        {"Name": "Aspirin", "SMILES": "old", "CAS Nr": "50-78-2"}
+    )
+    df = pd.DataFrame(
+        {
+            "CAS Nr": ["50-78-2"],
+            "Name": ["50-78-2"],
+            "SMILES": ["old"],
+        }
+    )
+    summary = import_csv(
+        collection, df, "CAS Nr", ["Name", "SMILES"], on_collision="append"
+    )
+    assert summary.appended == 0
+    doc = collection.find_one({"CAS Nr": "50-78-2"})
+    assert doc["Name"] == "Aspirin"
+    assert "alternative Name" not in doc
+    assert "alternative SMILES" not in doc
+
+
+def test_import_identical_row_is_not_appended(collection):
+    collection.insert_one({"Name": "Aspirin", "SMILES": "old"})
+    df = pd.DataFrame({"Name": ["Aspirin"], "SMILES": ["old"]})
+    summary = import_csv(collection, df, "Name", ["SMILES"], on_collision="append")
+    assert summary.appended == 0
+    assert collection.find_one({"Name": "Aspirin"})["SMILES"] == "old"
+
+
+def test_import_append_fills_blank_fields(collection):
+    collection.insert_one({"Name": "Aspirin", "SMILES": ""})
+    df = pd.DataFrame({"Name": ["Aspirin"], "SMILES": ["CC"]})
+    summary = import_csv(collection, df, "Name", ["SMILES"], on_collision="append")
+    assert summary.appended == 1
+    doc = collection.find_one({"Name": "Aspirin"})
+    assert doc["SMILES"] == "CC"
+    assert "alternative SMILES" not in doc
+
+
+def test_import_append_is_the_default(collection):
+    collection.insert_one({"Name": "Aspirin", "SMILES": "old"})
+    df = pd.DataFrame({"Name": ["Aspirin"], "SMILES": ["new"]})
+    summary = import_csv(collection, df, "Name", ["SMILES"])
+    assert summary.appended == 1
+    doc = collection.find_one({"Name": "Aspirin"})
+    assert doc["SMILES"] == "old"
+    assert doc["alternative SMILES"] == "new"
 
 
 def test_import_skips_nan_in_identifier(collection):
@@ -49,7 +119,7 @@ def test_import_skips_nan_in_identifier(collection):
 def test_import_skips_nan_data_values(collection):
     collection.insert_one({"Name": "Aspirin", "Pure": True})
     df = pd.DataFrame({"Name": ["Aspirin"], "Pure": [float("nan")]})
-    summary = import_csv(collection, df, "Name", ["Pure"])
+    summary = import_csv(collection, df, "Name", ["Pure"], on_collision="overwrite")
     assert summary.updated == 1
     # NaN was skipped: existing value preserved.
     assert collection.find_one({"Name": "Aspirin"})["Pure"] is True

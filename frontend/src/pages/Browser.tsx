@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import CompoundForm from "../components/CompoundForm";
+import CsvImportDialog from "../components/CsvImportDialog";
 import StructurePreview from "../components/StructurePreview";
 import type { Compound, CompoundSchema, User } from "../types";
 
@@ -57,7 +58,7 @@ export default function Browser({
     }
   });
   const [showColumns, setShowColumns] = useState(false);
-  const [importFile, setImportFile] = useState<File | null>(null);
+  const [csvImport, setCsvImport] = useState<{ file: File; headers: string[] } | null>(null);
 
   async function loadCatalog() {
     const dbs = (await api.databases()).databases;
@@ -232,43 +233,20 @@ export default function Browser({
               Download CSV
             </button>
           </a>
-          <input
-            type="file"
-            accept=".csv"
-            onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-          />
-          <button
-            className="secondary"
-            disabled={!importFile}
-            onClick={async () => {
-              if (!importFile || !schema) return;
-              const head = await importFile.slice(0, 65536).text();
-              const headers = csvHeaders(head);
-              const defaultId =
-                schema.csv_identifiers.find((col) => headers.includes(col)) ||
-                headers[0] ||
-                "Name";
-              const identifier = prompt(
-                `Identifier column (${schema.csv_identifiers.join(", ")})`,
-                defaultId
-              );
-              if (!identifier) return;
-              const defaultData = headers.filter((col) => col !== identifier).join(",");
-              const dataCols =
-                prompt("Data columns, comma-separated", defaultData) || defaultData;
-              const summary = await api.importCsv(
-                db,
-                coll,
-                importFile,
-                identifier,
-                dataCols.split(",").map((s) => s.trim()).filter(Boolean)
-              );
-              setMessage(`Imported: created ${summary.created}, updated ${summary.updated}`);
-              await loadCompounds();
-            }}
-          >
+          <label className="file-button">
             Import CSV
-          </button>
+            <input
+              type="file"
+              accept=".csv"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file || !schema) return;
+                const head = await file.slice(0, 65536).text();
+                setCsvImport({ file, headers: csvHeaders(head) });
+              }}
+            />
+          </label>
         </div>
         {showColumns && (
           <div className="row" style={{ marginBottom: "0.5rem" }}>
@@ -364,6 +342,37 @@ export default function Browser({
         )}
         {!creating && !selected && <p className="muted">Select a compound or click Add.</p>}
       </section>
+      {csvImport && schema && (
+        <CsvImportDialog
+          headers={csvImport.headers}
+          defaultIdentifier={
+            schema.csv_identifiers.find((col) => csvImport.headers.includes(col)) ||
+            csvImport.headers[0] ||
+            "Name"
+          }
+          onCancel={() => setCsvImport(null)}
+          onImport={async ({ identifier, dataCols, onCollision }) => {
+            const file = csvImport.file;
+            setCsvImport(null);
+            try {
+              const summary = await api.importCsv(
+                db,
+                coll,
+                file,
+                identifier,
+                dataCols,
+                onCollision
+              );
+              setMessage(
+                `Imported: created ${summary.created}, updated ${summary.updated}, appended ${summary.appended ?? 0}`
+              );
+              await loadCompounds();
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Import failed");
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

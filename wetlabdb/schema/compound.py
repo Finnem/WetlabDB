@@ -10,6 +10,7 @@ from typing import Any
 
 COMPOUND_FORM: dict[str, dict[str, Any]] = {
     "Name": {"type": "string", "default": ""},
+    "alternative Name": {"type": "string", "default": ""},
     "SMILES": {"type": "string", "default": ""},
     "CAS Nr": {"type": "string", "default": ""},
     "Storage Location": {"type": "string", "default": ""},
@@ -29,6 +30,7 @@ compound_form = COMPOUND_FORM
 
 DEFAULT_VISIBLE_COLUMNS: list[str] = [
     "Name",
+    "alternative Name",
     "SMILES",
     "CAS Nr",
     "Storage Location",

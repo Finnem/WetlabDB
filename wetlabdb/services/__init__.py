@@ -12,6 +12,7 @@ from wetlabdb.services.catalog import CatalogError, CatalogService
 from wetlabdb.services.compounds import CompoundService
 from wetlabdb.services.csv_io import (
     CsvImportSummary,
+    alternative_field,
     export_csv,
     export_csv_text,
     import_csv,
@@ -26,6 +27,7 @@ __all__ = [
     "CompoundService",
     "CsvImportSummary",
     "SearchService",
+    "alternative_field",
     "User",
     "export_csv",
     "export_csv_text",
