@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wetlabdb"
+version = "0.3.0"
+description = "Wet-lab compound database with a hosted web UI (MongoDB or standalone JSON storage)."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "rdkit>=2023.03.1",
+    "pandas>=1.5.3",
+    "Pillow>=9.4.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "python-multipart>=0.0.9",
+    "argon2-cffi>=23.1",
+    "itsdangerous>=2.1",
+]
+
+[project.optional-dependencies]
+mongo = ["pymongo>=4.3.3"]
+build = ["pyinstaller>=6.0.0"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "mongomock>=4.1",
+    "httpx>=0.27",
+]
+
+[project.scripts]
+wetlabdb = "wetlabdb.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["wetlabdb*"]
+exclude = ["tests*", "build*", "dist*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]

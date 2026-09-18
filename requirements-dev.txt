@@ -1,0 +1,7 @@
+# Development dependencies for the wetlabdb test suite.
+# Install with:  pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=7.0
+pytest-cov>=4.0
+mongomock>=4.1
+httpx>=0.27

@@ -1,0 +1,60 @@
+# Secrets and machine-specific config
+.env
+.env.*
+!.env.example
+mongodb_config.json
+*.pem
+*.key
+credentials.json
+
+# Runtime / lab data (not source)
+local_data/
+csvs/
+*.csv
+*.xlsx
+*.xls
+*.sqlite
+*.db
+
+# Personal notes and access docs
+*.pdf
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Frontend
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Packaging / PyInstaller
+build/
+dist/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+@eaDir/
+#recycle/
+
+# Scratch
+.tmp-tools/
+*.log
+npm-debug.log*

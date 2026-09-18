@@ -1,0 +1,27 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      WETLABDB_MODE: remote
+      MONGO_URI: mongodb://mongo:27017
+      WETLABDB_DATA_DIR: /data
+      WETLABDB_SESSION_SECRET: ${WETLABDB_SESSION_SECRET:-change-me-in-production}
+      WETLABDB_ADMIN_USER: ${WETLABDB_ADMIN_USER:-admin}
+      WETLABDB_ADMIN_PASSWORD: ${WETLABDB_ADMIN_PASSWORD:-admin}
+    volumes:
+      - wetlab_uploads:/data
+    depends_on:
+      - mongo
+    restart: unless-stopped
+
+  mongo:
+    image: mongo:7
+    volumes:
+      - wetlab_mongo:/data/db
+    restart: unless-stopped
+
+volumes:
+  wetlab_uploads:
+  wetlab_mongo:

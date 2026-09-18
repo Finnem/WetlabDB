@@ -1,0 +1,12 @@
+frontend/node_modules
+frontend/dist
+.pytest_cache
+__pycache__
+*.egg-info
+.git
+csvs
+dist
+build
+local_data
+*.csv
+mongodb_config.json

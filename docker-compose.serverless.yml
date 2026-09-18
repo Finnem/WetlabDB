@@ -1,0 +1,20 @@
+# Serverless / JSON-file mode. No Mongo.
+#   docker compose -f docker-compose.serverless.yml up --build
+
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      WETLABDB_MODE: local
+      WETLABDB_DATA_DIR: /data
+      WETLABDB_SESSION_SECRET: ${WETLABDB_SESSION_SECRET:-change-me-in-production}
+      WETLABDB_ADMIN_USER: ${WETLABDB_ADMIN_USER:-admin}
+      WETLABDB_ADMIN_PASSWORD: ${WETLABDB_ADMIN_PASSWORD:-admin}
+    volumes:
+      - wetlab_local:/data
+    restart: unless-stopped
+
+volumes:
+  wetlab_local:

@@ -1,0 +1,12 @@
+rdkit>=2023.03.1
+pandas>=1.5.3
+Pillow>=9.4.0
+pyinstaller>=6.0.0
+fastapi>=0.110
+uvicorn[standard]>=0.27
+python-multipart>=0.0.9
+argon2-cffi>=23.1
+itsdangerous>=2.1
+# Optional: required only for "remote" MongoDB mode.
+# Skip this install if you only ever use Standalone (local file) mode.
+pymongo>=4.3.3
