@@ -36,7 +36,3 @@ cd frontend && npm install && npm run dev
 Vite proxies `/api` to port 8000. Bootstrap admin comes from `WETLABDB_ADMIN_USER` / `WETLABDB_ADMIN_PASSWORD` (defaults `admin` / empty unless set).
 
 Legacy desktop UI: `python -m wetlabdb --tk`.
-
-## Data
-
-Do not bind-mount a Synology Drive / `/mnt/e` path as the database. Use the named Docker volumes. Compound chemistry (SMILES, similarity, substructure) lives in `wetlabdb.chem`; HTTP parity tests in `tests/parity/` lock the Tk workflows.
