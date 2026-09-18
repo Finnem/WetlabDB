@@ -1,6 +1,7 @@
 # WetlabDB
 
-Tkinter-based wet-lab compound database with a hosted web UI.
+Tkinter-based wet-lab compound database with a hosted web UI. 
+Developed to keep an overview of compounds in our lab.
 
 ## Web UI (primary)
 
