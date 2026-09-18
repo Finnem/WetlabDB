@@ -42,13 +42,21 @@ input, select, textarea {
 }
 .login form {
   background: var(--panel);
-  padding: 1.5rem;
+  padding: 1.75rem;
   border-radius: 10px;
   width: min(22rem, 92vw);
   display: grid;
-  gap: 0.7rem;
+  gap: 1.1rem;
   box-shadow: 0 8px 24px rgba(20, 40, 70, 0.08);
 }
+.login h1 { margin: 0; }
+.login form > p { margin: 0; }
+.login label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.login input { width: 100%; }
 .shell { display: grid; grid-template-rows: auto 1fr; height: 100%; }
 .topbar {
   display: flex;
@@ -79,8 +87,13 @@ input, select, textarea {
   min-height: 0;
   overflow: auto;
 }
-.toolbar, .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
-.toolbar { margin-bottom: 0.6rem; }
+.toolbar, .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+.toolbar { margin-bottom: 0.75rem; }
+.toolbar label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
 .table-wrap { overflow: auto; max-height: calc(100vh - 12rem); }
 table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
 th, td { border-bottom: 1px solid var(--line); padding: 0.3rem 0.4rem; text-align: left; vertical-align: middle; }
@@ -98,8 +111,13 @@ tr.selected { background: #e8f1ff; }
   object-fit: contain;
   background: #fff;
 }
-.form { display: grid; gap: 0.45rem; }
-.form-row { display: grid; grid-template-columns: 11rem 1fr auto; gap: 0.4rem; align-items: center; }
+.form { display: grid; gap: 0.7rem; }
+.form-row { display: grid; grid-template-columns: 11rem 1fr auto; gap: 0.65rem; align-items: center; }
+.form > label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
 .error { color: var(--danger); }
 .ok { color: var(--ok); }
 .muted { color: var(--muted); font-size: 0.85rem; }
