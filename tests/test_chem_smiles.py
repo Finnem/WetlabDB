@@ -18,6 +18,7 @@ from wetlabdb.chem.smiles import (
     parse_smiles,
     perceive_aromaticity,
     render_to_png_bytes,
+    smiles_to_3d_molblock,
 )
 
 
@@ -437,3 +438,16 @@ def test_editor_reopen_benzene_then_wildcard_yields_aromatic_smarts():
         f"(this means the bug where reopened benzene reads as cyclohexane is back)"
     )
     assert "=" not in text, f"unexpected Kekule double bonds in {text!r}"
+
+
+def test_smiles_to_3d_molblock_ethanol():
+    block = smiles_to_3d_molblock("CCO")
+    assert block is not None
+    assert "M  END" in block
+    mol = Chem.MolFromMolBlock(block, sanitize=False)
+    assert mol is not None
+    assert mol.GetNumConformers() == 1
+
+
+def test_smiles_to_3d_molblock_invalid():
+    assert smiles_to_3d_molblock("not-a-molecule") is None

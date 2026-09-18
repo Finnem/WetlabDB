@@ -108,3 +108,16 @@ def test_render_png_valid_smiles(admin_client):
 def test_render_png_invalid_smiles(admin_client):
     response = admin_client.get("/api/render.png", params={"smiles": "not-a-molecule"})
     assert response.status_code in {404, 422}
+
+
+def test_chem_3d_mol_valid_smiles(admin_client):
+    response = admin_client.get("/api/chem/3d.mol", params={"smiles": "CCO"})
+    assert response.status_code == 200
+    text = response.text
+    assert "M  END" in text
+    assert response.headers["content-type"].startswith("chemical/x-mdl-molfile")
+
+
+def test_chem_3d_mol_invalid_smiles(admin_client):
+    response = admin_client.get("/api/chem/3d.mol", params={"smiles": "not-a-molecule"})
+    assert response.status_code == 404

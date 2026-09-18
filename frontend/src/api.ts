@@ -111,6 +111,10 @@ export const api = {
     if (highlight && highlight.length) params.set("highlight", highlight.join(","));
     return `/api/render.png?${params.toString()}`;
   },
+  mol3dUrl: (smiles: string) => {
+    const params = new URLSearchParams({ smiles });
+    return `/api/chem/3d.mol?${params.toString()}`;
+  },
   metrics: () => request<SearchMetrics>("/api/search/metrics"),
   similarity: (
     db: string,
@@ -147,6 +151,25 @@ export const api = {
       sort_all: String(sortAll),
     });
     return `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(coll)}/search/similarity.csv?${params}`;
+  },
+  exportMolZip: async (db: string, coll: string, ids: string[]) => {
+    const response = await fetch(
+      `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(coll)}/mol/export`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      }
+    );
+    if (!response.ok) {
+      throw new Error(await parseError(response));
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("content-disposition") || "";
+    const match = /filename="([^"]+)"/.exec(disposition);
+    const filename = match?.[1] || "compounds_aligned.zip";
+    return { blob, filename };
   },
   importCsv: async (
     db: string,

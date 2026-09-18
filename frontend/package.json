@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "3dmol": "^2.5.5",
     "ketcher-core": "^2.27.0",
     "ketcher-react": "^2.27.0",
     "ketcher-standalone": "^2.27.0",

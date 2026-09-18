@@ -12,6 +12,7 @@ from wetlabdb.api.routes import auth as auth_routes
 from wetlabdb.api.routes import catalog as catalog_routes
 from wetlabdb.api.routes import compounds as compound_routes
 from wetlabdb.api.routes import csv as csv_routes
+from wetlabdb.api.routes import mol as mol_routes
 from wetlabdb.api.routes import meta as meta_routes
 from wetlabdb.api.routes import search as search_routes
 from wetlabdb.services.auth import AuthService
@@ -70,6 +71,7 @@ def create_app(
     app.include_router(compound_routes.router, prefix=prefix)
     app.include_router(search_routes.router, prefix=prefix)
     app.include_router(csv_routes.router, prefix=prefix)
+    app.include_router(mol_routes.router, prefix=prefix)
 
     dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
     if mount_spa and dist.is_dir():

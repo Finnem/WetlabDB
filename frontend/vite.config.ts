@@ -25,7 +25,7 @@ export default defineConfig({
     global: "globalThis",
   },
   optimizeDeps: {
-    include: ["raphael", "ketcher-core", "ketcher-react", "ketcher-standalone"],
+    include: ["raphael", "ketcher-core", "ketcher-react", "ketcher-standalone", "3dmol"],
   },
   server: {
     port: 5173,

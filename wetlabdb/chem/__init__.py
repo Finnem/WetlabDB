@@ -30,6 +30,7 @@ from wetlabdb.chem.smiles import (
     parse_smiles,
     perceive_aromaticity,
     render_to_png_bytes,
+    smiles_to_3d_molblock,
 )
 from wetlabdb.chem.substructure import (
     SubstructureHit,
@@ -59,6 +60,7 @@ __all__ = [
     "parse_smiles",
     "perceive_aromaticity",
     "render_to_png_bytes",
+    "smiles_to_3d_molblock",
     "similarity_search",
     "substructure_search",
     "tanimoto_similarity",

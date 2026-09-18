@@ -59,6 +59,8 @@ export default function Browser({
   });
   const [showColumns, setShowColumns] = useState(false);
   const [csvImport, setCsvImport] = useState<{ file: File; headers: string[] } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [molExporting, setMolExporting] = useState(false);
 
   async function loadCatalog() {
     const dbs = (await api.databases()).databases;
@@ -97,8 +99,54 @@ export default function Browser({
     loadCompounds().catch((err) => setError(String(err)));
     setSelected(null);
     setCreating(false);
+    setSelectedIds(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, coll]);
+
+  const visibleIds = useMemo(() => compounds.map((c) => c._id), [compounds]);
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+  const someVisibleSelected = visibleIds.some((id) => selectedIds.has(id));
+
+  function toggleRowSelection(id: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllVisible(checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of visibleIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  async function downloadMolZip() {
+    if (!db || !coll || selectedIds.size === 0) return;
+    setMolExporting(true);
+    setError("");
+    try {
+      const { blob, filename } = await api.exportMolZip(db, coll, Array.from(selectedIds));
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      setMessage(`Downloaded ${filename}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "MOL export failed");
+    } finally {
+      setMolExporting(false);
+    }
+  }
 
   useEffect(() => {
     localStorage.setItem(COLS_KEY, JSON.stringify(visible));
@@ -233,6 +281,14 @@ export default function Browser({
               Download CSV
             </button>
           </a>
+          <button
+            type="button"
+            className="secondary"
+            disabled={selectedIds.size === 0 || molExporting}
+            onClick={() => downloadMolZip()}
+          >
+            {molExporting ? "Exporting…" : "Download Mol"}
+          </button>
           <label className="file-button">
             Import CSV
             <input
@@ -272,6 +328,17 @@ export default function Browser({
           <table>
             <thead>
               <tr>
+                <th className="select-col">
+                  <input
+                    type="checkbox"
+                    aria-label="Select all visible"
+                    checked={allVisibleSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = someVisibleSelected && !allVisibleSelected;
+                    }}
+                    onChange={(e) => toggleSelectAllVisible(e.target.checked)}
+                  />
+                </th>
                 <th>Structure</th>
                 {visible.map((c) => (
                   <th key={c}>{c}</th>
@@ -282,12 +349,25 @@ export default function Browser({
               {compounds.map((doc) => (
                 <tr
                   key={doc._id}
-                  className={selected?._id === doc._id ? "selected" : ""}
+                  className={[
+                    selected?._id === doc._id ? "selected" : "",
+                    selectedIds.has(doc._id) ? "checked" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                   onClick={() => {
                     setSelected(doc);
                     setCreating(false);
                   }}
                 >
+                  <td className="select-col" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(doc._id)}
+                      aria-label={`Select ${doc.Name ?? doc._id}`}
+                      onChange={(e) => toggleRowSelection(doc._id, e.target.checked)}
+                    />
+                  </td>
                   <td>
                     {doc.SMILES ? (
                       <img
@@ -327,7 +407,7 @@ export default function Browser({
               )}
             </div>
             {!creating && selected?.SMILES ? (
-              <StructurePreview smiles={String(selected.SMILES)} width={280} height={200} />
+              <StructurePreview smiles={String(selected.SMILES)} width={200} height={180} />
             ) : null}
             <CompoundForm
               key={creating ? "new" : selected?._id ?? "edit"}

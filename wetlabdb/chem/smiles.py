@@ -310,6 +310,30 @@ def render_to_png_bytes(
         return None
 
 
+def smiles_to_3d_molblock(smiles: str | None) -> str | None:
+    """Build a 3D conformer MOL block from a SMILES string.
+
+    Query / SMARTS patterns and unparsable input return ``None``. Hydrogens are
+    added before embedding so the viewer can show a sensible ball-and-stick model.
+    """
+    mol, kind = parse_molecule(smiles)
+    if mol is None or kind != "smiles" or not is_pure_smiles(mol):
+        return None
+    try:
+        work = Chem.AddHs(Chem.Mol(mol))
+        params = AllChem.ETKDGv3()
+        params.randomSeed = 0xF00D
+        if AllChem.EmbedMolecule(work, params) != 0:
+            return None
+        try:
+            AllChem.MMFFOptimizeMolecule(work)
+        except Exception:
+            AllChem.UFFOptimizeMolecule(work)
+        return Chem.MolToMolBlock(work)
+    except Exception:
+        return None
+
+
 __all__ = [
     "MoleculeKind",
     "aromatize_query",
@@ -324,4 +348,5 @@ __all__ = [
     "parse_smiles",
     "perceive_aromaticity",
     "render_to_png_bytes",
+    "smiles_to_3d_molblock",
 ]
