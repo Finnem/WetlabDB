@@ -49,6 +49,7 @@ class UserStore(Protocol):
     def get(self, username: str) -> User | None: ...
 
     def upsert(self, user: User) -> None: ...
+    def delete(self, username: str) -> bool: ...
 
 
 class JsonUserStore:
@@ -99,6 +100,16 @@ class JsonUserStore:
                 rows.append(_user_to_row(user))
             self._save(rows)
 
+    def delete(self, username: str) -> bool:
+        username = username.strip()
+        with self._lock:
+            rows = self._load()
+            kept = [r for r in rows if r.get("username") != username]
+            if len(kept) == len(rows):
+                return False
+            self._save(kept)
+            return True
+
 
 class MongoUserStore:
     """``wetlabdb_meta.users`` on the shared Mongo backend."""
@@ -123,6 +134,9 @@ class MongoUserStore:
             )
         else:
             self._coll.insert_one(payload)
+
+    def delete(self, username: str) -> bool:
+        return self._coll.delete_one({"username": username.strip()}).deleted_count > 0
 
 
 def _row_to_user(row: dict) -> User:
@@ -229,6 +243,15 @@ class AuthService:
             user.kind = "employee"
         self._store.upsert(user)
         return user
+
+    def delete_user(self, username: str) -> None:
+        username = (username or "").strip()
+        if not username:
+            raise AuthError("Username is required")
+        if self.get(username) is None:
+            raise AuthError(f"User '{username}' not found")
+        if not self._store.delete(username):
+            raise AuthError(f"User '{username}' not found")
 
 
 __all__ = [

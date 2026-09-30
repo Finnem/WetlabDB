@@ -74,6 +74,24 @@ def test_non_admin_cannot_list_users(user_client):
     assert response.status_code == 403
 
 
+def test_admin_can_update_and_delete_user(admin_client):
+    created = admin_client.post(
+        "/api/users",
+        json={"username": "tempuser", "password": "temppass", "admin": False, "kind": "student"},
+    )
+    assert created.status_code == 201
+    patched = admin_client.patch(
+        "/api/users/tempuser",
+        json={"kind": "employee"},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["kind"] == "employee"
+    deleted = admin_client.delete("/api/users/tempuser")
+    assert deleted.status_code == 200
+    names = {u["username"] for u in admin_client.get("/api/users").json()}
+    assert "tempuser" not in names
+
+
 def test_student_can_read_compounds(user_client):
     listed = user_client.get(
         "/api/databases/WetlabDB/collections/Compounds/compounds"

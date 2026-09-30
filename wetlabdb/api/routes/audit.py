@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query, Request
 
+from wetlabdb.api.audit_serialize import serialize_audit_events
 from wetlabdb.api.deps import require_admin
 from wetlabdb.services.audit import AuditService
 from wetlabdb.services.auth import User
@@ -21,4 +22,4 @@ def list_audit_events(
     _: User = Depends(require_admin),
     audit: AuditService = Depends(get_audit_service),
 ):
-    return {"events": audit.list_recent(limit=limit)}
+    return {"events": serialize_audit_events(audit.list_recent(limit=limit))}

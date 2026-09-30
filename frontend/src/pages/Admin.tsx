@@ -13,11 +13,13 @@ export default function Admin() {
   const [coll, setColl] = useState("");
   const [trash, setTrash] = useState<TrashCompound[]>([]);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [auditError, setAuditError] = useState("");
+  const [catalogError, setCatalogError] = useState("");
 
   const loadAudit = useCallback(async () => {
     const body = await api.auditEvents(200);
     setEvents(body.events);
+    setAuditError("");
   }, []);
 
   const loadTrash = useCallback(async () => {
@@ -31,7 +33,7 @@ export default function Admin() {
 
   useEffect(() => {
     if (tab !== "audit") return;
-    loadAudit().catch((err) => setError(String(err)));
+    loadAudit().catch((err) => setAuditError(err instanceof Error ? err.message : String(err)));
   }, [tab, loadAudit]);
 
   useEffect(() => {
@@ -40,8 +42,9 @@ export default function Admin() {
       .then((body) => {
         setDatabases(body.databases);
         if (!db && body.databases.length) setDb(body.databases[0]);
+        setCatalogError("");
       })
-      .catch((err) => setError(String(err)));
+      .catch((err) => setCatalogError(err instanceof Error ? err.message : String(err)));
   }, [db]);
 
   useEffect(() => {
@@ -55,17 +58,18 @@ export default function Admin() {
         setCollections(body.collections);
         if (!coll || !body.collections.includes(coll)) setColl(body.collections[0] ?? "");
       })
-      .catch((err) => setError(String(err)));
+      .catch((err) => setCatalogError(err instanceof Error ? err.message : String(err)));
   }, [db, coll]);
 
   useEffect(() => {
     if (tab !== "trash") return;
-    loadTrash().catch((err) => setError(String(err)));
+    loadTrash().catch((err) => setCatalogError(err instanceof Error ? err.message : String(err)));
   }, [tab, loadTrash]);
 
   async function restore(compound: Compound) {
     if (!db || !coll) return;
-    setError("");
+    setAuditError("");
+    setCatalogError("");
     setMessage("");
     try {
       await api.restoreCompound(db, coll, compound._id);
@@ -73,7 +77,7 @@ export default function Admin() {
       await loadTrash();
       await loadAudit();
     } catch (err) {
-      setError(String(err));
+      setCatalogError(err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -81,7 +85,8 @@ export default function Admin() {
     <div className="panel">
       <h2>Admin</h2>
       <p className="muted">Audit trail and soft-deleted compounds (restore).</p>
-      {error && <p className="error">{error}</p>}
+      {auditError && tab === "audit" && <p className="error">Audit: {auditError}</p>}
+      {catalogError && tab === "trash" && <p className="error">{catalogError}</p>}
       {message && <p className="success">{message}</p>}
 
       <div className="tab-row" style={{ marginBottom: "1rem" }}>
@@ -95,7 +100,7 @@ export default function Admin() {
 
       {tab === "audit" && (
         <>
-          <button type="button" className="secondary" onClick={() => loadAudit().catch((e) => setError(String(e)))}>
+          <button type="button" className="secondary" onClick={() => loadAudit().catch((e) => setAuditError(String(e)))}>
             Refresh
           </button>
           <table className="data-table" style={{ marginTop: "1rem" }}>
@@ -150,7 +155,7 @@ export default function Admin() {
               ))}
             </select>
           </label>
-          <button type="button" className="secondary" style={{ marginLeft: "0.5rem" }} onClick={() => loadTrash().catch((e) => setError(String(e)))}>
+          <button type="button" className="secondary" style={{ marginLeft: "0.5rem" }} onClick={() => loadTrash().catch((e) => setCatalogError(String(e)))}>
             Refresh
           </button>
           <table className="data-table" style={{ marginTop: "1rem" }}>

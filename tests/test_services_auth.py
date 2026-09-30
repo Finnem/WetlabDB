@@ -40,3 +40,9 @@ def test_update_password(auth):
     auth.update_user("a", password="new")
     assert auth.verify("a", "old") is None
     assert auth.verify("a", "new") is not None
+
+
+def test_delete_user(auth):
+    auth.create_user("gone", "pw")
+    auth.delete_user("gone")
+    assert auth.get("gone") is None

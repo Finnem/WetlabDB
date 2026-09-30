@@ -76,6 +76,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ username, password, admin, kind }),
     }),
+  updateUser: (
+    username: string,
+    patch: { password?: string; admin?: boolean; kind?: "student" | "employee" }
+  ) =>
+    request<User>(`/api/users/${encodeURIComponent(username)}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  deleteUser: (username: string) =>
+    request<{ ok: boolean }>(`/api/users/${encodeURIComponent(username)}`, { method: "DELETE" }),
   collectionPolicies: () =>
     request<{ policies: CollectionAccessPolicy[] }>("/api/access/collection-policies"),
   putCollectionPolicy: (

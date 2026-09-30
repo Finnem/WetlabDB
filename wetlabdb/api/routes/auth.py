@@ -98,14 +98,14 @@ def patch_user(
     body: PatchUserBody,
     current: User = Depends(get_current_user),
 ):
+    if username != current.username and not current.admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
     if body.admin is not None and not current.admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    if username != current.username and not current.admin:
+    if body.kind is not None and not current.admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     if body.password is None and body.admin is None and body.kind is None:
         raise HTTPException(status_code=400, detail="Nothing to update")
-    if body.kind is not None and not current.admin:
-        raise HTTPException(status_code=403, detail="Admin access required")
     try:
         user = request.app.state.auth.update_user(
             username,
@@ -122,3 +122,28 @@ def patch_user(
         summary["admin"] = body.admin
     record_audit(request, action="user.update", target=f"user:{user.username}", summary=summary)
     return user.public_dict()
+
+
+@router.delete("/users/{username}")
+def delete_user_route(
+    request: Request,
+    username: str,
+    current: User = Depends(require_admin),
+):
+    target = username.strip()
+    if target == current.username:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    auth = request.app.state.auth
+    user = auth.get(target)
+    if user is None:
+        raise HTTPException(status_code=404, detail=f"User '{target}' not found")
+    if user.admin:
+        admins = [u for u in auth.list_users() if u.admin]
+        if len(admins) <= 1:
+            raise HTTPException(status_code=400, detail="Cannot delete the only admin account")
+    try:
+        auth.delete_user(target)
+    except AuthError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    record_audit(request, action="user.delete", target=f"user:{target}")
+    return {"ok": True}
