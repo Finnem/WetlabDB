@@ -353,6 +353,15 @@ def aligned_mol_blocks(
     return out_blocks
 
 
+def _sdf_from_mol_blocks(blocks: Sequence[tuple[str, str]]) -> str:
+    """Concatenate mol blocks into one MDL SDF (records separated by ``$$$$``)."""
+    parts = [block.rstrip() for _entry, block in blocks if block.strip()]
+    if not parts:
+        raise MolExportError("No structures to export")
+    records = [f"{part}\n$$$$" for part in parts]
+    return "\n".join(records) + "\n"
+
+
 def compounds_to_mol_zip(
     rows: Sequence[CompoundExportRow],
     *,
@@ -365,6 +374,56 @@ def compounds_to_mol_zip(
         for entry_name, mol_block in blocks:
             zf.writestr(entry_name, mol_block)
     return buf.getvalue(), archive_name
+
+
+def compounds_to_sdf(
+    rows: Sequence[CompoundExportRow],
+    *,
+    filename: str = "compounds.sdf",
+) -> tuple[str, str]:
+    """Build one SDF with MCS-aligned 2D structures."""
+    blocks = aligned_mol_blocks(rows)
+    return _sdf_from_mol_blocks(blocks), filename
+
+
+def page_items_to_mol_blocks(items: Sequence[PageMolItem]) -> list[tuple[str, str]]:
+    """MOL blocks from page items (posed molblocks when present)."""
+    out: list[tuple[str, str]] = []
+    used_names: dict[str, int] = {}
+    for item in items:
+        mol = _mol_for_page(item)
+        if mol is None:
+            continue
+        label = _sanitize_filename(item.name, item.doc_id or "compound")
+        key = label.lower()
+        used_names[key] = used_names.get(key, 0) + 1
+        suffix = f"_{used_names[key]}" if used_names[key] > 1 else ""
+        out.append((f"{label}{suffix}.mol", _mol_to_kekule_block(mol, label)))
+    if not out:
+        raise MolExportError("No parseable structures in selection")
+    return out
+
+
+def page_items_to_mol_zip(
+    items: Sequence[PageMolItem],
+    *,
+    archive_name: str = "compounds.zip",
+) -> tuple[bytes, str]:
+    blocks = page_items_to_mol_blocks(items)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for entry_name, mol_block in blocks:
+            zf.writestr(entry_name, mol_block)
+    return buf.getvalue(), archive_name
+
+
+def page_items_to_sdf(
+    items: Sequence[PageMolItem],
+    *,
+    filename: str = "compounds.sdf",
+) -> tuple[str, str]:
+    blocks = page_items_to_mol_blocks(items)
+    return _sdf_from_mol_blocks(blocks), filename
 
 
 def rows_from_docs(docs: Iterable[dict]) -> list[CompoundExportRow]:
@@ -702,7 +761,10 @@ __all__ = [
     "PageMolItem",
     "aligned_mol_blocks",
     "compounds_to_mol_zip",
+    "compounds_to_sdf",
     "compounds_to_page_cdxml",
     "compounds_to_page_mol",
+    "page_items_to_mol_zip",
+    "page_items_to_sdf",
     "rows_from_docs",
 ]

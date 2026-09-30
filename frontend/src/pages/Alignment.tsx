@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent } from "react";
 import { api } from "../api";
+import { downloadAlignmentCsv } from "../alignmentExport";
 import CoreReferencePanel from "../components/CoreReferencePanel";
 import ClickableMol from "../components/ClickableMol";
+import ExportMenu from "../components/ExportMenu";
+import { downloadBlob } from "../downloadBlob";
 import {
   atomModesPayload,
   CORE_MODE_CHIP,
@@ -217,7 +220,7 @@ export default function Alignment({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [molExporting, setMolExporting] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
   const [liveAligning, setLiveAligning] = useState(false);
   const [alignProgress, setAlignProgress] = useState<AlignProgress | null>(null);
   const [poseById, setPoseById] = useState<Record<string, string>>({});
@@ -868,34 +871,58 @@ export default function Alignment({
     }
   }
 
-  async function downloadMolPage() {
+  function pageMoleculesPayload() {
+    return selectedList.map((doc) => ({
+      id: doc._id,
+      name: names[doc._id] || compoundName(doc),
+      smiles: compoundSmiles(doc),
+      molblock: poseByIdRef.current[doc._id] || "",
+    }));
+  }
+
+  async function downloadChemDrawFigure() {
     if (!selectedList.length) return;
-    setMolExporting(true);
+    setExportBusy(true);
     setError("");
     try {
       const { blob, filename } = await api.exportMolPage({
-        molecules: selectedList.map((doc) => ({
-          id: doc._id,
-          name: names[doc._id] || compoundName(doc),
-          smiles: compoundSmiles(doc),
-          molblock: poseByIdRef.current[doc._id] || "",
-        })),
+        molecules: pageMoleculesPayload(),
         columns: previewColumnCount(pageContentRef.current),
         filename: `${coll}.cdxml`,
         format: "cdxml",
       });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(blob, filename);
       setMessage(`Downloaded ${filename}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "ChemDraw export failed");
     } finally {
-      setMolExporting(false);
+      setExportBusy(false);
     }
+  }
+
+  async function downloadBulkStructures(format: "zip" | "sdf") {
+    if (!selectedList.length) return;
+    setExportBusy(true);
+    setError("");
+    try {
+      const { blob, filename } = await api.exportMolBulk({
+        molecules: pageMoleculesPayload(),
+        format,
+        filename: format === "sdf" ? `${coll}.sdf` : `${coll}_structures.zip`,
+      });
+      downloadBlob(blob, filename);
+      setMessage(`Downloaded ${filename}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Structure export failed");
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  function downloadCsvExport() {
+    if (!selectedList.length) return;
+    downloadAlignmentCsv(selectedList, names, assayFields, selectedAssays, measurementsById);
+    setMessage("Downloaded alignment_export.csv");
   }
 
   const onRotDown = useCallback(
@@ -1328,15 +1355,16 @@ export default function Alignment({
           >
             Approve
           </button>
-          <button
-            type="button"
-            className="secondary"
-            disabled={!selectedIds.size || molExporting}
-            title="ChemDraw CDXML, laid out like this figure, with names"
-            onClick={() => downloadMolPage()}
-          >
-            {molExporting ? "Exporting…" : "Download ChemDraw"}
-          </button>
+          <ExportMenu
+            busy={exportBusy}
+            structuresDisabled={!selectedIds.size}
+            chemDrawDisabled={!selectedIds.size}
+            csvDisabled={!selectedIds.size}
+            onCsv={() => downloadCsvExport()}
+            onChemDraw={() => downloadChemDrawFigure()}
+            onMolZip={() => downloadBulkStructures("zip")}
+            onSdf={() => downloadBulkStructures("sdf")}
+          />
           <button type="button" className="secondary" onClick={onClose}>
             Close
           </button>

@@ -11,8 +11,11 @@ from wetlabdb.chem.align import (
     MolExportError,
     PageMolItem,
     compounds_to_mol_zip,
+    compounds_to_sdf,
     compounds_to_page_cdxml,
     compounds_to_page_mol,
+    page_items_to_mol_zip,
+    page_items_to_sdf,
     rows_from_docs,
 )
 from wetlabdb.services.auth import User
@@ -23,6 +26,7 @@ router = APIRouter()
 
 class MolExportBody(BaseModel):
     ids: list[str] = Field(..., min_length=1)
+    format: str = "zip"
 
 
 @router.post("/databases/{database}/collections/{collection}/mol/export")
@@ -38,10 +42,23 @@ def mol_export(
             docs.append(doc)
     if not docs:
         raise HTTPException(status_code=404, detail="No matching compounds")
+    rows = rows_from_docs(docs)
+    fmt = (body.format or "zip").lower()
     try:
-        payload, filename = compounds_to_mol_zip(rows_from_docs(docs))
+        if fmt == "sdf":
+            payload, filename = compounds_to_sdf(rows)
+        elif fmt in ("zip", "mol"):
+            payload, filename = compounds_to_mol_zip(rows)
+        else:
+            raise HTTPException(status_code=422, detail=f"Unsupported format: {body.format}")
     except MolExportError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if fmt == "sdf":
+        return Response(
+            content=payload.encode("utf-8"),
+            media_type="chemical/x-mdl-sdfile",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
     return Response(
         content=payload,
         media_type="application/zip",
@@ -96,3 +113,45 @@ def mol_page(
         media_type=media,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+class MolBulkBody(BaseModel):
+    molecules: list[MolPageItemBody] = Field(..., min_length=1)
+    format: str = "zip"
+    filename: str = "compounds.zip"
+
+
+@router.post("/mol/bulk")
+def mol_bulk(
+    body: MolBulkBody,
+    _: User = Depends(get_current_user),
+):
+    items = [
+        PageMolItem(
+            doc_id=row.id,
+            name=row.name,
+            smiles=row.smiles,
+            molblock=row.molblock,
+        )
+        for row in body.molecules
+    ]
+    fmt = (body.format or "zip").lower()
+    try:
+        if fmt == "sdf":
+            payload, out_name = page_items_to_sdf(items, filename=body.filename)
+            return Response(
+                content=payload.encode("utf-8"),
+                media_type="chemical/x-mdl-sdfile",
+                headers={"Content-Disposition": f'attachment; filename="{out_name}"'},
+            )
+        if fmt in ("zip", "mol"):
+            archive = body.filename if body.filename.lower().endswith(".zip") else "compounds.zip"
+            payload, out_name = page_items_to_mol_zip(items, archive_name=archive)
+            return Response(
+                content=payload,
+                media_type="application/zip",
+                headers={"Content-Disposition": f'attachment; filename="{out_name}"'},
+            )
+    except MolExportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    raise HTTPException(status_code=422, detail=f"Unsupported format: {body.format}")

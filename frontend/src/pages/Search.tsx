@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
+import ExportMenu from "../components/ExportMenu";
 import KetcherEditor, { looksLikeQuery } from "../components/KetcherEditor";
 import StructurePreview from "../components/StructurePreview";
+import { downloadBlob } from "../downloadBlob";
 import { downloadSearchHitsCsv } from "../searchExport";
 import type { SearchMetrics, SimilarityHit, SubstructureHit } from "../types";
 
@@ -22,6 +24,7 @@ export default function Search({
   const [mode, setMode] = useState<"similarity" | "substructure">("similarity");
   const [error, setError] = useState("");
   const [drawing, setDrawing] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
 
   useEffect(() => {
     api.metrics().then((m) => {
@@ -68,10 +71,46 @@ export default function Search({
     downloadSearchHitsCsv(hits, mode);
   }
 
-  function exportMolecules() {
-    const ids = hits.map((h) => String(h.document._id)).filter(Boolean);
-    if (ids.length === 0) return;
-    onExportMolecules(ids);
+  const hitIds = hits.map((h) => String(h.document._id)).filter(Boolean);
+
+  async function exportChemDrawGrid() {
+    if (!hits.length) return;
+    setExportBusy(true);
+    setError("");
+    try {
+      const { blob, filename } = await api.exportMolPage({
+        molecules: hits.map((h) => {
+          const doc = h.document;
+          return {
+            id: String(doc._id),
+            name: String(doc.Name ?? doc._id),
+            smiles: String(doc.SMILES ?? ""),
+          };
+        }),
+        columns: Math.min(4, hits.length),
+        filename: `${coll}_search.cdxml`,
+        format: "cdxml",
+      });
+      downloadBlob(blob, filename);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  async function runStructureExport(format: "zip" | "sdf") {
+    if (!hitIds.length || !db || !coll) return;
+    setExportBusy(true);
+    setError("");
+    try {
+      const { blob, filename } = await api.exportMolZip(db, coll, hitIds, format);
+      downloadBlob(blob, filename);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setExportBusy(false);
+    }
   }
 
   return (
@@ -112,22 +151,20 @@ export default function Search({
           <button className="secondary" onClick={runSubstructure}>
             Substructure
           </button>
-          <button
-            type="button"
-            className="secondary"
-            disabled={hits.length === 0}
-            onClick={downloadCsv}
-          >
-            Download CSV
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            disabled={hits.length === 0}
-            onClick={exportMolecules}
-          >
-            Export Molecules
-          </button>
+          <ExportMenu
+            busy={exportBusy}
+            disabled={!db || !coll}
+            csvDisabled={hits.length === 0}
+            structuresDisabled={hits.length === 0}
+            chemDrawDisabled={hits.length === 0}
+            showFigureLayout
+            figureLayoutDisabled={hits.length === 0}
+            onCsv={downloadCsv}
+            onChemDraw={() => exportChemDrawGrid()}
+            onMolZip={() => runStructureExport("zip")}
+            onSdf={() => runStructureExport("sdf")}
+            onFigureLayout={() => onExportMolecules(hitIds)}
+          />
         </div>
         {metrics?.descriptions[metric] && (
           <p className="muted">{metrics.descriptions[metric]}</p>

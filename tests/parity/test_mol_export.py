@@ -34,6 +34,26 @@ def test_mol_export_zip_only_requested_ids(admin_client):
     assert not any("MolExpSkip" in n for n in names)
 
 
+def test_mol_export_sdf(admin_client):
+    id_a = _add(admin_client, "SdfA", "CCO")
+    id_b = _add(admin_client, "SdfB", "CCN")
+    response = admin_client.post(
+        "/api/databases/WetlabDB/collections/Compounds/mol/export",
+        json={"ids": [id_a, id_b], "format": "sdf"},
+    )
+    assert response.status_code == 200, response.text
+    assert "sdfile" in response.headers.get("content-type", "")
+    text = response.content.decode("utf-8")
+    assert text.rstrip().endswith("$$$$")
+    assert text.count("$$$$") >= 2
+    from rdkit import Chem
+
+    suppl = Chem.SDMolSupplier()
+    suppl.SetData(text)
+    mols = [m for m in suppl if m is not None]
+    assert len(mols) == 2
+
+
 def test_mol_export_empty_ids_rejected(admin_client):
     response = admin_client.post(
         "/api/databases/WetlabDB/collections/Compounds/mol/export",

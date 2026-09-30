@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import CompoundForm from "../components/CompoundForm";
 import CsvImportDialog from "../components/CsvImportDialog";
+import ExportMenu from "../components/ExportMenu";
 import StructurePreview from "../components/StructurePreview";
+import { downloadBlob } from "../downloadBlob";
 import type { Compound, CompoundSchema, User } from "../types";
 
 const COLS_KEY = "wetlabdb.visible_columns";
@@ -62,6 +64,7 @@ export default function Browser({
   const [showColumns, setShowColumns] = useState(false);
   const [csvImport, setCsvImport] = useState<{ file: File; headers: string[] } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [exportBusy, setExportBusy] = useState(false);
 
   async function loadCatalog() {
     const dbs = (await api.databases()).databases;
@@ -143,6 +146,59 @@ export default function Browser({
     if (schema) Object.keys(schema.fields).forEach((k) => keys.add(k));
     return Array.from(keys);
   }, [compounds, schema, visible]);
+
+  const selectedCompounds = useMemo(
+    () => compounds.filter((c) => selectedIds.has(c._id)),
+    [compounds, selectedIds]
+  );
+
+  const csvExportUrl = api.exportCsvUrl(
+    db,
+    coll,
+    visible.length ? visible : ["Name", "SMILES"],
+    q,
+    column
+  );
+
+  async function runStructureExport(format: "zip" | "sdf") {
+    const ids = selectedCompounds.map((c) => c._id);
+    if (!ids.length || !db || !coll) return;
+    setExportBusy(true);
+    setError("");
+    try {
+      const { blob, filename } = await api.exportMolZip(db, coll, ids, format);
+      downloadBlob(blob, filename);
+      setMessage(`Downloaded ${filename}`);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  async function exportChemDrawGrid() {
+    if (!selectedCompounds.length) return;
+    setExportBusy(true);
+    setError("");
+    try {
+      const { blob, filename } = await api.exportMolPage({
+        molecules: selectedCompounds.map((c) => ({
+          id: c._id,
+          name: String(c.Name ?? c._id),
+          smiles: String(c.SMILES ?? ""),
+        })),
+        columns: Math.min(4, selectedCompounds.length),
+        filename: `${coll}.cdxml`,
+        format: "cdxml",
+      });
+      downloadBlob(blob, filename);
+      setMessage(`Downloaded ${filename}`);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setExportBusy(false);
+    }
+  }
 
   async function save(data: Record<string, unknown>, unset: string[]) {
     if (!db || !coll) return;
@@ -257,19 +313,21 @@ export default function Browser({
           >
             Add
           </button>
-          <a href={api.exportCsvUrl(db, coll, visible.length ? visible : ["Name", "SMILES"], q, column)}>
-            <button type="button" className="secondary">
-              Download CSV
-            </button>
-          </a>
-          <button
-            type="button"
-            className="secondary"
-            disabled={selectedIds.size === 0}
-            onClick={() => onExportMolecules(Array.from(selectedIds))}
-          >
-            Export Molecules
-          </button>
+          <ExportMenu
+            busy={exportBusy}
+            disabled={!db || !coll}
+            structuresDisabled={selectedIds.size === 0}
+            chemDrawDisabled={selectedIds.size === 0}
+            showFigureLayout
+            figureLayoutDisabled={selectedIds.size === 0}
+            onCsv={() => {
+              window.location.assign(csvExportUrl);
+            }}
+            onChemDraw={() => exportChemDrawGrid()}
+            onMolZip={() => runStructureExport("zip")}
+            onSdf={() => runStructureExport("sdf")}
+            onFigureLayout={() => onExportMolecules(Array.from(selectedIds))}
+          />
           <label className="file-button">
             Import CSV
             <input

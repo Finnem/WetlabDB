@@ -145,14 +145,14 @@ export const api = {
     if (column) params.set("column", column);
     return `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(coll)}/csv/export?${params}`;
   },
-  exportMolZip: async (db: string, coll: string, ids: string[]) => {
+  exportMolZip: async (db: string, coll: string, ids: string[], format: "zip" | "sdf" = "zip") => {
     const response = await fetch(
       `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(coll)}/mol/export`,
       {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids }),
+        body: JSON.stringify({ ids, format }),
       }
     );
     if (!response.ok) {
@@ -161,7 +161,28 @@ export const api = {
     const blob = await response.blob();
     const disposition = response.headers.get("content-disposition") || "";
     const match = /filename="([^"]+)"/.exec(disposition);
-    const filename = match?.[1] || "compounds_aligned.zip";
+    const filename =
+      match?.[1] || (format === "sdf" ? "compounds.sdf" : "compounds_aligned.zip");
+    return { blob, filename };
+  },
+  exportMolBulk: async (body: {
+    molecules: { id?: string; name?: string; smiles?: string; molblock?: string }[];
+    format?: "zip" | "sdf";
+    filename?: string;
+  }) => {
+    const response = await fetch("/api/mol/bulk", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response));
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("content-disposition") || "";
+    const match = /filename="([^"]+)"/.exec(disposition);
+    const filename = match?.[1] || "compounds.zip";
     return { blob, filename };
   },
   exportMolPage: async (body: {
