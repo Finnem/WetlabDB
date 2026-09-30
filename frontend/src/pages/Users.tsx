@@ -2,10 +2,11 @@ import { FormEvent, useEffect, useState } from "react";
 import { api } from "../api";
 
 export default function Users() {
-  const [users, setUsers] = useState<{ username: string; admin: boolean }[]>([]);
+  const [users, setUsers] = useState<{ username: string; admin: boolean; kind?: string }[]>([]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [admin, setAdmin] = useState(false);
+  const [kind, setKind] = useState<"student" | "employee">("student");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -22,10 +23,11 @@ export default function Users() {
     setError("");
     setMessage("");
     try {
-      await api.createUser(username, password, admin);
+      await api.createUser(username, password, admin, kind);
       setUsername("");
       setPassword("");
       setAdmin(false);
+      setKind("student");
       setMessage("User created");
       await refresh();
     } catch (err) {
@@ -42,6 +44,7 @@ export default function Users() {
             <tr>
               <th>Username</th>
               <th>Admin</th>
+              <th>Kind</th>
             </tr>
           </thead>
           <tbody>
@@ -49,6 +52,7 @@ export default function Users() {
               <tr key={u.username}>
                 <td>{u.username}</td>
                 <td>{u.admin ? "yes" : "no"}</td>
+                <td>{u.admin ? "employee" : u.kind ?? "student"}</td>
               </tr>
             ))}
           </tbody>
@@ -64,6 +68,15 @@ export default function Users() {
           <label>
             <input type="checkbox" checked={admin} onChange={(e) => setAdmin(e.target.checked)} /> Admin
           </label>
+          {!admin && (
+            <label>
+              Account kind
+              <select value={kind} onChange={(e) => setKind(e.target.value as "student" | "employee")}>
+                <option value="student">Student</option>
+                <option value="employee">Employee</option>
+              </select>
+            </label>
+          )}
           {error && <p className="error">{error}</p>}
           {message && <p className="ok">{message}</p>}
           <button type="submit">Create user</button>

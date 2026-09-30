@@ -46,6 +46,15 @@ def test_non_admin_me_flag(user_client):
     body = user_client.get("/api/me").json()
     assert body["username"] == "user"
     assert body["admin"] is False
+    assert body["kind"] == "student"
+    assert body["can_manage_permissions"] is False
+
+
+def test_employee_me_flag(employee_client):
+    body = employee_client.get("/api/me").json()
+    assert body["username"] == "emp"
+    assert body["kind"] == "employee"
+    assert body["can_manage_permissions"] is True
 
 
 def test_non_admin_cannot_create_database(user_client):
@@ -65,14 +74,29 @@ def test_non_admin_cannot_list_users(user_client):
     assert response.status_code == 403
 
 
-def test_non_admin_can_crud_compounds(user_client):
+def test_student_can_read_compounds(user_client):
+    listed = user_client.get(
+        "/api/databases/WetlabDB/collections/Compounds/compounds"
+    )
+    assert listed.status_code == 200
+
+
+def test_student_cannot_create_compound(user_client):
     created = user_client.post(
+        "/api/databases/WetlabDB/collections/Compounds/compounds",
+        json={"data": {"Name": "UserAdd", "SMILES": "CC"}},
+    )
+    assert created.status_code == 403
+
+
+def test_employee_can_crud_compounds(employee_client):
+    created = employee_client.post(
         "/api/databases/WetlabDB/collections/Compounds/compounds",
         json={"data": {"Name": "UserAdd", "SMILES": "CC"}},
     )
     assert created.status_code == 201
     doc_id = created.json()["_id"]
-    fetched = user_client.get(
+    fetched = employee_client.get(
         f"/api/databases/WetlabDB/collections/Compounds/compounds/{doc_id}"
     )
     assert fetched.status_code == 200

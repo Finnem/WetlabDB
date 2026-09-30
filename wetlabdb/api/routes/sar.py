@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from starlette.responses import StreamingResponse
 
 from wetlabdb.api.deps import get_catalog, get_current_user
+from wetlabdb.services.authorization import AuthorizationService
 from wetlabdb.schema.compound import COMPOUND_FORM
 from wetlabdb.services.auth import User
 from wetlabdb.services.catalog import CatalogService
@@ -33,6 +34,17 @@ router = APIRouter(tags=["sar"])
 
 def get_sar_repo(catalog: CatalogService = Depends(get_catalog)) -> WetlabDBCompoundRepository:
     return WetlabDBCompoundRepository(catalog)
+
+
+def _require_collection_editor(
+    request: Request,
+    user: User,
+    database: str,
+    collection: str,
+) -> None:
+    authz: AuthorizationService = request.app.state.authorization
+    if not authz.can_edit(user, database, collection):
+        raise HTTPException(status_code=403, detail="Edit access required for this collection")
 
 
 @router.get("/projects")
@@ -162,7 +174,10 @@ class CoreAnalogGeneralizeBody(BaseModel):
 
 @router.post("/sar/core-analog-generalize")
 def sar_core_analog_generalize(body: CoreAnalogGeneralizeBody, _: User = Depends(get_current_user)):
+    from wetlabdb.api.metrics import record_operation
     from wetlabdb.sar.pipeline.core_pick import generalize_core_from_analog
+
+    record_operation("sar.core_analog_generalize")
 
     modes: dict[int, str] | None = None
     if body.atom_modes:
@@ -184,7 +199,10 @@ def sar_core_analog_generalize(body: CoreAnalogGeneralizeBody, _: User = Depends
 
 @router.post("/sar/core-preview")
 def sar_core_preview(body: CorePreviewBody, _: User = Depends(get_current_user)):
+    from wetlabdb.api.metrics import record_operation
     from wetlabdb.sar.pipeline.core_pick import preview_core
+
+    record_operation("sar.core_preview")
 
     modes: dict[int, str] | None = None
     if body.atom_modes:
@@ -212,7 +230,10 @@ class GuessCoreBody(BaseModel):
 
 @router.post("/sar/guess-core")
 def sar_guess_core(body: GuessCoreBody, _: User = Depends(get_current_user)):
+    from wetlabdb.api.metrics import record_operation
     from wetlabdb.sar.pipeline.core_pick import guess_shared_core
+
+    record_operation("sar.guess_core")
 
     return guess_shared_core(
         [{"id": m.id, "smiles": m.smiles} for m in body.molecules],
@@ -223,8 +244,13 @@ def sar_guess_core(body: GuessCoreBody, _: User = Depends(get_current_user)):
 
 @router.post("/sar/depict")
 def sar_depict(body: DepictBody, _: User = Depends(get_current_user)):
+    from wetlabdb.api.metrics import record_operation
     from wetlabdb.sar.pipeline.core_pick import depict_structure
 
+    record_operation("sar.depict")
+    modes = None
+    if body.core_atom_modes:
+        modes = {int(key): str(value) for key, value in body.core_atom_modes.items()}
     drawn = depict_structure(
         body.smiles,
         width=body.width,
@@ -233,7 +259,7 @@ def sar_depict(body: DepictBody, _: User = Depends(get_current_user)):
         selected=body.selected,
         fragment_atoms=body.fragment_atoms,
         molblock=body.molblock or None,
-        core_atom_modes=body.core_atom_modes or None,
+        core_atom_modes=modes,
         query_labels=body.query_labels,
     )
     if drawn is None:
@@ -254,7 +280,10 @@ class RotatePosesBody(BaseModel):
 
 @router.post("/sar/rotate-poses")
 def sar_rotate_poses(body: RotatePosesBody, _: User = Depends(get_current_user)):
+    from wetlabdb.api.metrics import record_operation
     from wetlabdb.sar.pipeline.core_pick import rotate_poses
+
+    record_operation("sar.rotate_poses")
 
     return {
         "poses": rotate_poses(
@@ -272,6 +301,8 @@ class AlignmentPoseBody(BaseModel):
 class AlignmentRunBody(BaseModel):
     project_id: str
     series_id: str
+    database: str = "WetlabDB"
+    collection: str = "Compounds"
     compound_ids: list[str] = Field(min_length=1)
     assay_ids: list[str] = Field(default_factory=list)
     reference_id: str
@@ -285,10 +316,15 @@ class AlignmentRunBody(BaseModel):
 @router.post("/alignment/run")
 def run_alignment(
     body: AlignmentRunBody,
-    _: User = Depends(get_current_user),
+    request: Request,
+    user: User = Depends(get_current_user),
     repo: WetlabDBCompoundRepository = Depends(get_sar_repo),
 ):
     """Fixed-core, ring-atom, or scaffold alignment for a selected snapshot."""
+    from wetlabdb.api.metrics import record_operation
+
+    _require_collection_editor(request, user, body.database, body.collection)
+    record_operation("sar.alignment.run")
     try:
         snapshot = repo.get_series_snapshot(
             body.project_id,
@@ -359,10 +395,15 @@ def _alignment_progress_events(
 @router.post("/alignment/run-progress")
 def run_alignment_progress(
     body: AlignmentRunBody,
-    _: User = Depends(get_current_user),
+    request: Request,
+    user: User = Depends(get_current_user),
     repo: WetlabDBCompoundRepository = Depends(get_sar_repo),
 ):
     """Same as ``/alignment/run``, but streams NDJSON progress then the result."""
+    from wetlabdb.api.metrics import record_operation
+
+    _require_collection_editor(request, user, body.database, body.collection)
+    record_operation("sar.alignment.run_progress")
     try:
         snapshot = repo.get_series_snapshot(
             body.project_id,
@@ -389,6 +430,8 @@ def get_sar_sidecar(request: Request) -> SarAlignmentSidecar:
 class CreateAlignmentProjectBody(BaseModel):
     project_id: str
     series_id: str
+    database: str = "WetlabDB"
+    collection: str = "Compounds"
     compound_ids: list[str] = Field(min_length=1)
     assay_ids: list[str] = Field(default_factory=list)
     reference_id: str
@@ -403,11 +446,15 @@ class PatchAlignmentProjectBody(BaseModel):
     draft_solution: dict
     snapshot_revision: str | None = None
     force_unapproved_edit: bool = False
+    database: str = "WetlabDB"
+    collection: str = "Compounds"
 
 
 class ApproveAlignmentProjectBody(BaseModel):
     expected_version: int = Field(ge=1)
     snapshot_revision: str
+    database: str = "WetlabDB"
+    collection: str = "Compounds"
 
 
 def _project_payload(project: AlignmentProject) -> dict:
@@ -464,9 +511,14 @@ def list_alignment_projects(
 @router.post("/alignment-projects")
 def create_alignment_project(
     body: CreateAlignmentProjectBody,
+    request: Request,
     user: User = Depends(get_current_user),
     sidecar: SarAlignmentSidecar = Depends(get_sar_sidecar),
 ):
+    from wetlabdb.api.metrics import record_operation
+
+    _require_collection_editor(request, user, body.database, body.collection)
+    record_operation("sar.alignment.project.create")
     project = sidecar.create_project(
         owner=user.username,
         project_id=body.project_id,
@@ -499,9 +551,11 @@ def get_alignment_project(
 def patch_alignment_project(
     project_id: str,
     body: PatchAlignmentProjectBody,
+    request: Request,
     user: User = Depends(get_current_user),
     sidecar: SarAlignmentSidecar = Depends(get_sar_sidecar),
 ):
+    _require_collection_editor(request, user, body.database, body.collection)
     try:
         project = sidecar.patch_draft(
             project_id,
@@ -522,9 +576,11 @@ def patch_alignment_project(
 def approve_alignment_project(
     project_id: str,
     body: ApproveAlignmentProjectBody,
+    request: Request,
     user: User = Depends(get_current_user),
     sidecar: SarAlignmentSidecar = Depends(get_sar_sidecar),
 ):
+    _require_collection_editor(request, user, body.database, body.collection)
     try:
         project = sidecar.approve(
             project_id,

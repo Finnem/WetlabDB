@@ -49,6 +49,15 @@ class CollectionProto(Protocol):
 
     def count_documents(self, filter: dict | None = None) -> int: ...
 
+    def find_page(
+        self,
+        *,
+        limit: int,
+        after_id: str | None = None,
+        exclude_soft_deleted: bool = True,
+        projection: dict | None = None,
+    ) -> list[dict]: ...
+
 
 @runtime_checkable
 class DatabaseProto(Protocol):

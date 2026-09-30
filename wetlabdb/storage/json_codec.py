@@ -11,7 +11,7 @@ from wetlabdb.storage.ids import ObjectId
 class MongoJSONEncoder(json.JSONEncoder):
     """JSON encoder that knows about :class:`ObjectId` and :class:`datetime`."""
 
-    def default(self, obj):  # type: ignore[override]
+    def default(self, obj):
         if isinstance(obj, ObjectId) or obj.__class__.__name__ == "ObjectId":
             return str(obj)
         if isinstance(obj, (datetime, date)):

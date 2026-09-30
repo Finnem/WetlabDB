@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from wetlabdb.chem.enumerate import enumerate_molecules_from_smarts
 from wetlabdb.chem.similarity import (
     DEFAULT_METRIC,
@@ -10,7 +12,10 @@ from wetlabdb.chem.similarity import (
 )
 from wetlabdb.chem.smiles import looks_like_smarts, parse_smiles
 from wetlabdb.chem.substructure import SubstructureHit, substructure_search
+from wetlabdb.services.compound_meta import is_soft_deleted
 from wetlabdb.storage.base import CollectionProto
+
+_log = logging.getLogger(__name__)
 
 # Deeply negative so McConnaughey (range [-1, 1]) still returns every hit
 # when the UI asks to "sort all" rather than filter by cutoff.
@@ -20,8 +25,20 @@ SORT_ALL_CUTOFF = -2.0
 class SearchService:
     """Run similarity / substructure searches against a compound collection."""
 
-    def __init__(self, collection: CollectionProto) -> None:
+    def __init__(self, collection: CollectionProto, *, max_compounds: int = 50_000) -> None:
         self._coll = collection
+        self._max_compounds = max(1, int(max_compounds))
+
+    def _active_docs(self) -> list[dict]:
+        docs = [d for d in self._coll.find() if not is_soft_deleted(d)]
+        if len(docs) > self._max_compounds:
+            _log.warning(
+                '{"event":"search.truncated","loaded":%s,"max":%s}',
+                len(docs),
+                self._max_compounds,
+            )
+            docs = docs[: self._max_compounds]
+        return docs
 
     def similarity(
         self,
@@ -57,7 +74,7 @@ class SearchService:
 
         effective_cutoff = SORT_ALL_CUTOFF if sort_all else cutoff
         return similarity_search(
-            self._coll.find(),
+            self._active_docs(),
             query_mols,
             cutoff=effective_cutoff,
             metric=metric,
@@ -67,7 +84,7 @@ class SearchService:
         """Return documents whose ``SMILES`` contains ``query_smarts`` as a sub-structure."""
         if not query_smarts:
             return []
-        return substructure_search(self._coll.find(), query_smarts)
+        return substructure_search(self._active_docs(), query_smarts)
 
 
 __all__ = ["SORT_ALL_CUTOFF", "SearchService"]

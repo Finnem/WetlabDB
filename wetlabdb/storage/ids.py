@@ -14,7 +14,7 @@ from __future__ import annotations
 import uuid
 
 try:  # pragma: no cover - exercised by both branches in CI
-    from bson import ObjectId  # type: ignore[assignment]
+    from bson import ObjectId
 
     PYMONGO_AVAILABLE = True
 except ImportError:  # pragma: no cover - exercised in standalone tests

@@ -4,6 +4,8 @@ import Browser from "./pages/Browser";
 import Login from "./pages/Login";
 import Search from "./pages/Search";
 import Users from "./pages/Users";
+import Permissions from "./pages/Permissions";
+import Admin from "./pages/Admin";
 import Alignment from "./pages/Alignment";
 import {
   alignPath,
@@ -67,6 +69,18 @@ export default function App() {
     (pathname: string, search: string) => {
       const { page: nextPage, alignIds } = parseAppLocation(pathname, search);
       if (nextPage === "users" && !user?.admin) {
+        setPage("browse");
+        setExportIds(null);
+        navigateTo("/compounds", true);
+        return;
+      }
+      if (nextPage === "permissions" && !user?.can_manage_permissions) {
+        setPage("browse");
+        setExportIds(null);
+        navigateTo("/compounds", true);
+        return;
+      }
+      if (nextPage === "admin" && !user?.admin) {
         setPage("browse");
         setExportIds(null);
         navigateTo("/compounds", true);
@@ -144,16 +158,30 @@ export default function App() {
           <TopNavLink href="/search" active={page === "search"} onNavigate={() => goToPage("search")}>
             Molecular search
           </TopNavLink>
+          {user.can_manage_permissions && (
+            <TopNavLink
+              href="/permissions"
+              active={page === "permissions"}
+              onNavigate={() => goToPage("permissions")}
+            >
+              Permissions
+            </TopNavLink>
+          )}
           {user.admin && (
             <TopNavLink href="/users" active={page === "users"} onNavigate={() => goToPage("users")}>
               Users
+            </TopNavLink>
+          )}
+          {user.admin && (
+            <TopNavLink href="/admin" active={page === "admin"} onNavigate={() => goToPage("admin")}>
+              Admin
             </TopNavLink>
           )}
         </nav>
         <span className="spacer" />
         <span className="who">
           {user.username}
-          {user.admin ? " (admin)" : ""}
+          {user.admin ? " (admin)" : user.kind === "employee" ? " (employee)" : " (student)"}
         </span>
         <button
           className="secondary"
@@ -180,6 +208,8 @@ export default function App() {
           <Search db={db} coll={coll} onExportMolecules={openAlignment} />
         )}
         {page === "users" && user.admin && <Users />}
+        {page === "permissions" && user.can_manage_permissions && <Permissions />}
+        {page === "admin" && user.admin && <Admin />}
         {showAlign && exportIds && (
           <Alignment
             db={db}

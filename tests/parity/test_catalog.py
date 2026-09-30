@@ -70,3 +70,21 @@ def test_admin_create_and_drop_collection(admin_client):
         "collections"
     ]
     assert "Scratch" not in names
+
+
+def test_invalid_database_name_in_path_returns_400(admin_client):
+    response = admin_client.get("/api/databases/bad..db/collections")
+    assert response.status_code == 400
+
+
+def test_invalid_collection_in_compound_route_returns_400(admin_client):
+    response = admin_client.get("/api/databases/WetlabDB/collections/bad..coll/compounds")
+    assert response.status_code == 400
+
+
+def test_create_database_rejects_traversal_name(admin_client):
+    response = admin_client.post(
+        "/api/databases",
+        json={"name": "..", "collection": "Things"},
+    )
+    assert response.status_code == 400

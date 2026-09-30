@@ -1,6 +1,23 @@
 export type User = {
   username: string;
   admin: boolean;
+  kind: "student" | "employee";
+  can_manage_permissions: boolean;
+};
+
+export type CollectionAccessPolicy = {
+  database: string;
+  collection: string;
+  owner: string | null;
+  visibility:
+    | "owner_only"
+    | "employees"
+    | "students"
+    | "employees_and_students"
+    | "custom";
+  custom_users: string[];
+  student_access: "none" | "viewer" | "editor";
+  employee_access: "none" | "viewer" | "editor";
 };
 
 export type FieldSpec = {
@@ -16,6 +33,21 @@ export type CompoundSchema = {
 };
 
 export type Compound = Record<string, unknown> & { _id: string };
+
+export type AuditEvent = {
+  at: string;
+  actor: string | null;
+  action: string;
+  target: string;
+  summary?: Record<string, unknown>;
+  request_id?: string | null;
+};
+
+export type TrashCompound = Compound & {
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  Name?: string;
+};
 
 export type SimilarityHit = {
   document: Compound;

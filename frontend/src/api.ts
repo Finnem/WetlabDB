@@ -14,7 +14,20 @@ import type {
   SimilarityHit,
   SubstructureHit,
   User,
+  CollectionAccessPolicy,
+  AuditEvent,
+  TrashCompound,
 } from "./types";
+
+const API_MUTATION_HEADER = "X-WetlabDB-Request";
+
+function applyMutationHeader(headers: Headers, method: string | undefined, path: string): void {
+  const verb = (method || "GET").toUpperCase();
+  if (!["POST", "PUT", "PATCH", "DELETE"].includes(verb)) return;
+  if (!path.startsWith("/api/")) return;
+  if (path === "/api/login") return;
+  headers.set(API_MUTATION_HEADER, "1");
+}
 
 async function parseError(response: Response): Promise<string> {
   try {
@@ -28,6 +41,7 @@ async function parseError(response: Response): Promise<string> {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
+  applyMutationHeader(headers, init.method, path);
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
@@ -57,11 +71,22 @@ export const api = {
   logout: () => request<{ ok: boolean }>("/api/logout", { method: "POST" }),
   me: () => request<User>("/api/me"),
   users: () => request<User[]>("/api/users"),
-  createUser: (username: string, password: string, admin: boolean) =>
+  createUser: (username: string, password: string, admin: boolean, kind: "student" | "employee" = "student") =>
     request<User>("/api/users", {
       method: "POST",
-      body: JSON.stringify({ username, password, admin }),
+      body: JSON.stringify({ username, password, admin, kind }),
     }),
+  collectionPolicies: () =>
+    request<{ policies: CollectionAccessPolicy[] }>("/api/access/collection-policies"),
+  putCollectionPolicy: (
+    database: string,
+    collection: string,
+    body: Omit<CollectionAccessPolicy, "database" | "collection">
+  ) =>
+    request<CollectionAccessPolicy>(
+      `/api/databases/${encodeURIComponent(database)}/collections/${encodeURIComponent(collection)}/access-policy`,
+      { method: "PUT", body: JSON.stringify(body) }
+    ),
   schema: () => request<CompoundSchema>("/api/schema/compound"),
   databases: () => request<{ databases: string[] }>("/api/databases"),
   createDatabase: (name: string, collection: string) =>
@@ -85,14 +110,47 @@ export const api = {
       `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(name)}`,
       { method: "DELETE" }
     ),
-  compounds: (db: string, coll: string, q = "", column = "All") => {
+  compounds: (
+    db: string,
+    coll: string,
+    q = "",
+    column = "All",
+    opts?: { limit?: number; cursor?: string }
+  ) => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (column) params.set("column", column);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    if (opts?.cursor) params.set("cursor", opts.cursor);
     const qs = params.toString();
-    return request<{ compounds: Compound[] }>(
+    return request<{
+      compounds: Compound[];
+      total?: number;
+      next_cursor?: string | null;
+      limit?: number;
+    }>(
       `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(coll)}/compounds${qs ? `?${qs}` : ""}`
     );
+  },
+  compoundsAll: async (
+    db: string,
+    coll: string,
+    q = "",
+    column = "All",
+    pageSize = 200
+  ) => {
+    const all: Compound[] = [];
+    let cursor: string | undefined;
+    for (;;) {
+      const body = await api.compounds(db, coll, q, column, {
+        limit: pageSize,
+        cursor,
+      });
+      all.push(...body.compounds);
+      if (!body.next_cursor) break;
+      cursor = body.next_cursor;
+    }
+    return all;
   },
   addCompound: (db: string, coll: string, data: Record<string, unknown>) =>
     request<Compound>(
@@ -146,15 +204,15 @@ export const api = {
     return `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(coll)}/csv/export?${params}`;
   },
   exportMolZip: async (db: string, coll: string, ids: string[], format: "zip" | "sdf" = "zip") => {
-    const response = await fetch(
-      `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(coll)}/mol/export`,
-      {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ids, format }),
-      }
-    );
+    const path = `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(coll)}/mol/export`;
+    const headers = new Headers({ "Content-Type": "application/json" });
+    applyMutationHeader(headers, "POST", path);
+    const response = await fetch(path, {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: JSON.stringify({ ids, format }),
+    });
     if (!response.ok) {
       throw new Error(await parseError(response));
     }
@@ -166,14 +224,19 @@ export const api = {
     return { blob, filename };
   },
   exportMolBulk: async (body: {
+    database?: string;
+    collection?: string;
     molecules: { id?: string; name?: string; smiles?: string; molblock?: string }[];
     format?: "zip" | "sdf";
     filename?: string;
   }) => {
-    const response = await fetch("/api/mol/bulk", {
+    const path = "/api/mol/bulk";
+    const headers = new Headers({ "Content-Type": "application/json" });
+    applyMutationHeader(headers, "POST", path);
+    const response = await fetch(path, {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     });
     if (!response.ok) {
@@ -186,15 +249,20 @@ export const api = {
     return { blob, filename };
   },
   exportMolPage: async (body: {
+    database?: string;
+    collection?: string;
     molecules: { id?: string; name?: string; smiles?: string; molblock?: string }[];
     columns?: number;
     filename?: string;
     format?: "mol" | "cdxml";
   }) => {
-    const response = await fetch("/api/mol/page", {
+    const path = "/api/mol/page";
+    const headers = new Headers({ "Content-Type": "application/json" });
+    applyMutationHeader(headers, "POST", path);
+    const response = await fetch(path, {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     });
     if (!response.ok) {
@@ -310,6 +378,8 @@ export const api = {
   sarRunAlignment: (body: {
     project_id: string;
     series_id: string;
+    database?: string;
+    collection?: string;
     compound_ids: string[];
     assay_ids: string[];
     reference_id: string;
@@ -327,6 +397,8 @@ export const api = {
     body: {
       project_id: string;
       series_id: string;
+      database?: string;
+      collection?: string;
       compound_ids: string[];
       assay_ids: string[];
       reference_id: string;
@@ -338,10 +410,13 @@ export const api = {
     },
     onProgress?: (event: { phase: string; done: number; total: number }) => void
   ): Promise<AlignmentRunResult> => {
-    const response = await fetch("/api/alignment/run-progress", {
+    const path = "/api/alignment/run-progress";
+    const headers = new Headers({ "Content-Type": "application/json" });
+    applyMutationHeader(headers, "POST", path);
+    const response = await fetch(path, {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     });
     if (!response.ok) {
@@ -390,6 +465,8 @@ export const api = {
   sarCreateAlignmentProject: (body: {
     project_id: string;
     series_id: string;
+    database?: string;
+    collection?: string;
     compound_ids: string[];
     assay_ids: string[];
     reference_id: string;
@@ -414,12 +491,28 @@ export const api = {
     request<AlignmentProjectRecord>(`/api/alignment-projects/${encodeURIComponent(projectId)}`),
   sarApproveAlignmentProject: (
     projectId: string,
-    body: { expected_version: number; snapshot_revision: string }
+    body: {
+      expected_version: number;
+      snapshot_revision: string;
+      database?: string;
+      collection?: string;
+    }
   ) =>
     request<AlignmentProjectRecord>(`/api/alignment-projects/${encodeURIComponent(projectId)}/approve`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  auditEvents: (limit = 100) =>
+    request<{ events: AuditEvent[] }>(`/api/audit/events?limit=${limit}`),
+  deletedCompounds: (db: string, coll: string) =>
+    request<{ compounds: TrashCompound[] }>(
+      `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(coll)}/compounds/deleted`
+    ),
+  restoreCompound: (db: string, coll: string, id: string) =>
+    request<Compound>(
+      `/api/databases/${encodeURIComponent(db)}/collections/${encodeURIComponent(coll)}/compounds/${encodeURIComponent(id)}/restore`,
+      { method: "POST" }
+    ),
   importCsv: async (
     db: string,
     coll: string,

@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from wetlabdb.api.audit_log import record_audit
 from wetlabdb.api.deps import get_current_user, require_admin
 from wetlabdb.services.auth import AuthError, User
 
@@ -12,32 +13,49 @@ router = APIRouter()
 
 
 class LoginBody(BaseModel):
-    username: str
-    password: str
+    username: str = Field(..., min_length=1, max_length=128)
+    password: str = Field(..., min_length=1, max_length=256)
 
 
 class CreateUserBody(BaseModel):
-    username: str
-    password: str
+    username: str = Field(..., min_length=1, max_length=128)
+    password: str = Field(..., min_length=1, max_length=256)
     admin: bool = False
+    kind: str = "student"
 
 
 class PatchUserBody(BaseModel):
-    password: str | None = None
+    password: str | None = Field(default=None, max_length=256)
     admin: bool | None = None
+    kind: str | None = None
 
 
 @router.post("/login")
 def login(request: Request, body: LoginBody):
+    limiter = request.app.state.login_rate_limiter
+    client_host = request.client.host if request.client else "unknown"
+    if limiter.is_blocked(client_host, body.username):
+        raise HTTPException(status_code=429, detail="Too many login attempts; try again later")
     user = request.app.state.auth.verify(body.username, body.password)
     if user is None:
+        limiter.record_failure(client_host, body.username)
+        record_audit(
+            request,
+            action="login.failure",
+            target=f"user:{body.username}",
+            actor=body.username,
+            summary={"client": client_host},
+        )
         raise HTTPException(status_code=401, detail="Invalid username or password")
+    limiter.reset(client_host, body.username)
     request.session["username"] = user.username
+    record_audit(request, action="login.success", target=f"user:{user.username}")
     return user.public_dict()
 
 
 @router.post("/logout")
 def logout(request: Request):
+    record_audit(request, action="logout", target="session")
     request.session.clear()
     return {"ok": True}
 
@@ -60,10 +78,16 @@ def create_user(
 ):
     try:
         user = request.app.state.auth.create_user(
-            body.username, body.password, admin=body.admin
+            body.username, body.password, admin=body.admin, kind=body.kind
         )
     except AuthError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    record_audit(
+        request,
+        action="user.create",
+        target=f"user:{user.username}",
+        summary={"admin": user.admin},
+    )
     return user.public_dict()
 
 
@@ -78,12 +102,23 @@ def patch_user(
         raise HTTPException(status_code=403, detail="Admin access required")
     if username != current.username and not current.admin:
         raise HTTPException(status_code=403, detail="Admin access required")
-    if body.password is None and body.admin is None:
+    if body.password is None and body.admin is None and body.kind is None:
         raise HTTPException(status_code=400, detail="Nothing to update")
+    if body.kind is not None and not current.admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
     try:
         user = request.app.state.auth.update_user(
-            username, password=body.password, admin=body.admin
+            username,
+            password=body.password,
+            admin=body.admin,
+            kind=body.kind,
         )
     except AuthError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    summary: dict = {}
+    if body.password is not None:
+        summary["password_changed"] = True
+    if body.admin is not None:
+        summary["admin"] = body.admin
+    record_audit(request, action="user.update", target=f"user:{user.username}", summary=summary)
     return user.public_dict()

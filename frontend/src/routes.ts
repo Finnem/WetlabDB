@@ -1,8 +1,10 @@
-export type AppPage = "browse" | "search" | "users";
+export type AppPage = "browse" | "search" | "users" | "permissions" | "admin";
 
 export function pathForPage(page: AppPage): string {
   if (page === "search") return "/search";
   if (page === "users") return "/users";
+  if (page === "permissions") return "/permissions";
+  if (page === "admin") return "/admin";
   return "/compounds";
 }
 
@@ -32,6 +34,8 @@ export function parseAppLocation(pathname: string, search: string): {
     let page: AppPage = "browse";
     if (base === "/search") page = "search";
     else if (base === "/users") page = "users";
+    else if (base === "/permissions") page = "permissions";
+    else if (base === "/admin") page = "admin";
     return { page, alignIds: alignIds.length ? alignIds : [] };
   }
 
@@ -47,6 +51,8 @@ export function parseAppLocation(pathname: string, search: string): {
   let page: AppPage = "browse";
   if (path === "/search") page = "search";
   else if (path === "/users") page = "users";
+  else if (path === "/permissions") page = "permissions";
+  else if (path === "/admin") page = "admin";
   else if (path === "/" || path === "/compounds") page = "browse";
 
   return { page, alignIds: null };

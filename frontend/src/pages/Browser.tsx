@@ -8,6 +8,7 @@ import { downloadBlob } from "../downloadBlob";
 import type { Compound, CompoundSchema, User } from "../types";
 
 const COLS_KEY = "wetlabdb.visible_columns";
+const COMPOUND_PAGE_SIZE = 200;
 
 function csvHeaders(text: string): string[] {
   const line = (text.split(/\r?\n/).find((row) => row.trim()) || "").replace(/^\uFEFF/, "");
@@ -65,6 +66,9 @@ export default function Browser({
   const [csvImport, setCsvImport] = useState<{ file: File; headers: string[] } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [exportBusy, setExportBusy] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   async function loadCatalog() {
     const dbs = (await api.databases()).databases;
@@ -81,13 +85,20 @@ export default function Browser({
     if (nextColl !== coll) onColl(nextColl);
   }
 
-  async function loadCompounds(nextDb = db, nextColl = coll) {
+  async function loadCompounds(nextDb = db, nextColl = coll, append = false) {
     if (!nextDb || !nextColl) {
       setCompounds([]);
+      setNextCursor(null);
+      setTotalCount(null);
       return;
     }
-    const body = await api.compounds(nextDb, nextColl, q, column);
-    setCompounds(body.compounds);
+    const body = await api.compounds(nextDb, nextColl, q, column, {
+      limit: COMPOUND_PAGE_SIZE,
+      cursor: append && nextCursor ? nextCursor : undefined,
+    });
+    setTotalCount(typeof body.total === "number" ? body.total : null);
+    setNextCursor(body.next_cursor ?? null);
+    setCompounds((prev) => (append ? [...prev, ...body.compounds] : body.compounds));
   }
 
   useEffect(() => {
@@ -214,8 +225,20 @@ export default function Browser({
     setMessage("Saved");
   }
 
+  const canEdit = user.admin || user.kind === "employee";
+
   return (
     <div className="layout">
+      {!databases.length ? (
+        <section className="panel">
+          <h2>No collections available</h2>
+          <p className="muted">
+            You do not have access to any compound databases yet. Ask a lab employee or admin to
+            grant access to a collection.
+          </p>
+        </section>
+      ) : (
+      <>
       <section className="panel">
         <div className="toolbar">
           <label>
@@ -263,7 +286,7 @@ export default function Browser({
               ))}
             </select>
           </label>
-          {user.admin && (
+          {user.can_manage_permissions && (
             <>
               <button
                 className="secondary"
@@ -277,6 +300,10 @@ export default function Browser({
               >
                 + coll
               </button>
+            </>
+          )}
+          {user.admin && (
+            <>
               <button
                 className="danger"
                 onClick={async () => {
@@ -305,14 +332,16 @@ export default function Browser({
           <button className="secondary" onClick={() => setShowColumns((v) => !v)}>
             Columns
           </button>
-          <button
-            onClick={() => {
-              setCreating(true);
-              setSelected(null);
-            }}
-          >
-            Add
-          </button>
+          {canEdit && (
+            <button
+              onClick={() => {
+                setCreating(true);
+                setSelected(null);
+              }}
+            >
+              Add
+            </button>
+          )}
           <ExportMenu
             busy={exportBusy}
             disabled={!db || !coll}
@@ -328,6 +357,7 @@ export default function Browser({
             onSdf={() => runStructureExport("sdf")}
             onFigureLayout={() => onExportMolecules(Array.from(selectedIds))}
           />
+          {canEdit && (
           <label className="file-button">
             Import CSV
             <input
@@ -342,7 +372,36 @@ export default function Browser({
               }}
             />
           </label>
+          )}
         </div>
+        {totalCount !== null && (
+          <p className="muted" style={{ margin: "0.25rem 0" }}>
+            Showing {compounds.length} of {totalCount}
+            {nextCursor ? (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={loadingMore}
+                  onClick={async () => {
+                    setLoadingMore(true);
+                    setError("");
+                    try {
+                      await loadCompounds(db, coll, true);
+                    } catch (err) {
+                      setError(String(err));
+                    } finally {
+                      setLoadingMore(false);
+                    }
+                  }}
+                >
+                  {loadingMore ? "Loading…" : "Load more"}
+                </button>
+              </>
+            ) : null}
+          </p>
+        )}
         {showColumns && (
           <div className="row" style={{ marginBottom: "0.5rem" }}>
             {allColumns.map((c) => (
@@ -427,7 +486,7 @@ export default function Browser({
       </section>
       <section className="panel">
         {!schema && <p className="muted">Loading form…</p>}
-        {schema && (creating || selected) && (
+        {schema && canEdit && (creating || selected) && (
           <>
             <div className="toolbar">
               <strong>{creating ? "New compound" : selected?.Name || "Edit"}</strong>
@@ -459,8 +518,14 @@ export default function Browser({
             />
           </>
         )}
-        {!creating && !selected && <p className="muted">Select a compound or click Add.</p>}
+        {!creating && !selected && (
+          <p className="muted">
+            {canEdit ? "Select a compound or click Add." : "Select a compound to view details."}
+          </p>
+        )}
       </section>
+      </>
+      )}
       {csvImport && schema && (
         <CsvImportDialog
           headers={csvImport.headers}

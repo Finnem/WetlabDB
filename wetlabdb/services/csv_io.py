@@ -13,10 +13,26 @@ from typing import Any, Iterable, Literal, Sequence
 
 import pandas as pd
 
+from wetlabdb.services.compound_meta import is_soft_deleted
 from wetlabdb.schema.compound import CSV_IDENTIFIER_COLUMNS
 from wetlabdb.storage.base import CollectionProto
 
 CollisionMode = Literal["append", "overwrite"]
+
+MAX_CSV_UPLOAD_BYTES = 8 * 1024 * 1024
+MAX_CSV_ROWS = 10_000
+MAX_CSV_COLUMNS = 200
+
+
+class CsvShapeError(ValueError):
+    """CSV exceeds configured row/column limits."""
+
+
+def ensure_csv_shape(df: pd.DataFrame) -> None:
+    if len(df) > MAX_CSV_ROWS:
+        raise CsvShapeError(f"CSV has too many rows (max {MAX_CSV_ROWS})")
+    if len(df.columns) > MAX_CSV_COLUMNS:
+        raise CsvShapeError(f"CSV has too many columns (max {MAX_CSV_COLUMNS})")
 
 
 @dataclass
@@ -120,6 +136,52 @@ def _append_patch(existing: dict, incoming: dict, identifier_col: str) -> dict:
     return patch
 
 
+def _find_active(collection: CollectionProto, query: dict) -> dict | None:
+    for doc in collection.find(query):
+        if not is_soft_deleted(doc):
+            return doc
+    return None
+
+
+def preview_csv(
+    collection: CollectionProto,
+    df: pd.DataFrame,
+    identifier_col: str,
+    data_cols: Sequence[str],
+    *,
+    on_collision: CollisionMode = "append",
+) -> CsvImportSummary:
+    """Dry-run :func:`import_csv` without writing."""
+    if on_collision not in ("append", "overwrite"):
+        raise ValueError(f"Unknown on_collision mode: {on_collision!r}")
+    ensure_csv_shape(df)
+    summary = CsvImportSummary()
+    for _, row in df.iterrows():
+        raw_id = row[identifier_col]
+        if pd.isna(raw_id):
+            continue
+        identifier = str(raw_id)
+        doc_data: dict = {}
+        for col in data_cols:
+            value = row[col]
+            if pd.isna(value):
+                continue
+            doc_data[col] = _coerce_value(value)
+        query = {identifier_col: identifier}
+        existing = _find_active(collection, query)
+        if existing is not None:
+            if on_collision == "overwrite":
+                if doc_data:
+                    summary.updated += 1
+            else:
+                patch = _append_patch(existing, doc_data, identifier_col)
+                if patch:
+                    summary.appended += 1
+        else:
+            summary.created += 1
+    return summary
+
+
 def import_csv(
     collection: CollectionProto,
     df: pd.DataFrame,
@@ -143,6 +205,8 @@ def import_csv(
     if on_collision not in ("append", "overwrite"):
         raise ValueError(f"Unknown on_collision mode: {on_collision!r}")
 
+    ensure_csv_shape(df)
+
     summary = CsvImportSummary()
 
     for _, row in df.iterrows():
@@ -159,7 +223,7 @@ def import_csv(
             doc_data[col] = _coerce_value(value)
 
         query = {identifier_col: identifier}
-        existing = collection.find_one(query)
+        existing = _find_active(collection, query)
         if existing is not None:
             if on_collision == "overwrite":
                 if doc_data:
@@ -207,8 +271,14 @@ def export_csv(
 __all__ = [
     "CollisionMode",
     "CsvImportSummary",
+    "CsvShapeError",
+    "MAX_CSV_COLUMNS",
+    "MAX_CSV_ROWS",
+    "MAX_CSV_UPLOAD_BYTES",
     "alternative_field",
+    "ensure_csv_shape",
     "export_csv",
     "export_csv_text",
     "import_csv",
+    "preview_csv",
 ]

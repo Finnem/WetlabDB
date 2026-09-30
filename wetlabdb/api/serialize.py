@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from wetlabdb.services.compound_meta import without_meta_fields
 from wetlabdb.storage.json_codec import MongoJSONEncoder
 
 
@@ -12,7 +13,7 @@ def serialize_doc(doc: dict | None) -> dict | None:
     """Return a JSON-safe copy with ``_id`` coerced to ``str``."""
     if doc is None:
         return None
-    raw = json.loads(json.dumps(doc, cls=MongoJSONEncoder))
+    raw = json.loads(json.dumps(without_meta_fields(doc), cls=MongoJSONEncoder))
     if isinstance(raw, dict) and "_id" in raw:
         raw["_id"] = str(raw["_id"])
     return raw

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from starlette.responses import Response
 
@@ -19,9 +19,21 @@ from wetlabdb.chem.align import (
     rows_from_docs,
 )
 from wetlabdb.services.auth import User
+from wetlabdb.services.authorization import AuthorizationService
 from wetlabdb.services.compounds import CompoundService
 
 router = APIRouter()
+
+
+def _require_collection_viewer(
+    request: Request,
+    user: User,
+    database: str,
+    collection: str,
+) -> None:
+    authz: AuthorizationService = request.app.state.authorization
+    if not authz.can_view(user, database, collection):
+        raise HTTPException(status_code=403, detail="No access to this collection")
 
 
 class MolExportBody(BaseModel):
@@ -35,6 +47,9 @@ def mol_export(
     svc: CompoundService = Depends(compounds_for),
     _: User = Depends(get_current_user),
 ):
+    from wetlabdb.api.metrics import record_operation
+
+    record_operation("mol.export")
     docs: list[dict] = []
     for doc_id in body.ids:
         doc = svc.get(doc_id)
@@ -48,7 +63,7 @@ def mol_export(
         if fmt == "sdf":
             payload, filename = compounds_to_sdf(rows)
         elif fmt in ("zip", "mol"):
-            payload, filename = compounds_to_mol_zip(rows)
+            zip_payload, filename = compounds_to_mol_zip(rows)
         else:
             raise HTTPException(status_code=422, detail=f"Unsupported format: {body.format}")
     except MolExportError as exc:
@@ -60,7 +75,7 @@ def mol_export(
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
     return Response(
-        content=payload,
+        content=zip_payload,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
@@ -74,6 +89,8 @@ class MolPageItemBody(BaseModel):
 
 
 class MolPageBody(BaseModel):
+    database: str = "WetlabDB"
+    collection: str = "Compounds"
     molecules: list[MolPageItemBody] = Field(..., min_length=1)
     columns: int | None = Field(default=None, ge=1, le=40)
     filename: str = "figure.mol"
@@ -83,8 +100,13 @@ class MolPageBody(BaseModel):
 @router.post("/mol/page")
 def mol_page(
     body: MolPageBody,
-    _: User = Depends(get_current_user),
+    request: Request,
+    user: User = Depends(get_current_user),
 ):
+    from wetlabdb.api.metrics import record_operation
+
+    record_operation("mol.page")
+    _require_collection_viewer(request, user, body.database, body.collection)
     items = [
         PageMolItem(
             doc_id=row.id,
@@ -116,6 +138,8 @@ def mol_page(
 
 
 class MolBulkBody(BaseModel):
+    database: str = "WetlabDB"
+    collection: str = "Compounds"
     molecules: list[MolPageItemBody] = Field(..., min_length=1)
     format: str = "zip"
     filename: str = "compounds.zip"
@@ -124,8 +148,13 @@ class MolBulkBody(BaseModel):
 @router.post("/mol/bulk")
 def mol_bulk(
     body: MolBulkBody,
-    _: User = Depends(get_current_user),
+    request: Request,
+    user: User = Depends(get_current_user),
 ):
+    from wetlabdb.api.metrics import record_operation
+
+    record_operation("mol.bulk")
+    _require_collection_viewer(request, user, body.database, body.collection)
     items = [
         PageMolItem(
             doc_id=row.id,
@@ -146,9 +175,9 @@ def mol_bulk(
             )
         if fmt in ("zip", "mol"):
             archive = body.filename if body.filename.lower().endswith(".zip") else "compounds.zip"
-            payload, out_name = page_items_to_mol_zip(items, archive_name=archive)
+            zip_payload, out_name = page_items_to_mol_zip(items, archive_name=archive)
             return Response(
-                content=payload,
+                content=zip_payload,
                 media_type="application/zip",
                 headers={"Content-Disposition": f'attachment; filename="{out_name}"'},
             )

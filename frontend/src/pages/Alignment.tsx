@@ -244,15 +244,15 @@ export default function Alignment({
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([api.compounds(db, coll), api.sarAssayFields()])
-      .then(([compoundBody, assayBody]) => {
+    Promise.all([api.compoundsAll(db, coll), api.sarAssayFields()])
+      .then(([compoundRows, assayBody]) => {
         if (cancelled) return;
-        setCompounds(compoundBody.compounds);
+        setCompounds(compoundRows);
         const nextNames: Record<string, string> = {};
-        for (const doc of compoundBody.compounds) nextNames[doc._id] = compoundName(doc);
+        for (const doc of compoundRows) nextNames[doc._id] = compoundName(doc);
         setNames(nextNames);
         setAssayFields(assayBody.assay_fields);
-        const first = initialSelectedIds[0] || compoundBody.compounds[0]?._id || "";
+        const first = initialSelectedIds[0] || compoundRows[0]?._id || "";
         setReferenceId(first);
       })
       .catch((err) => {
@@ -426,6 +426,8 @@ export default function Alignment({
         .sarRunAlignment({
           project_id: db,
           series_id: coll,
+          database: db,
+          collection: coll,
           compound_ids: selectedList.map((c) => c._id),
           assay_ids: [...selectedAssays],
           reference_id: referenceId,
@@ -802,6 +804,8 @@ export default function Alignment({
         {
           project_id: db,
           series_id: coll,
+          database: db,
+          collection: coll,
           compound_ids: selectedList.map((doc) => doc._id),
           assay_ids: [...selectedAssays],
           reference_id: referenceId,
@@ -834,6 +838,8 @@ export default function Alignment({
       const record = await api.sarCreateAlignmentProject({
         project_id: db,
         series_id: coll,
+        database: db,
+        collection: coll,
         compound_ids: selectedList.map((doc) => doc._id),
         assay_ids: [...selectedAssays],
         reference_id: referenceId,
@@ -860,6 +866,8 @@ export default function Alignment({
       const record = await api.sarApproveAlignmentProject(savedProject.id, {
         expected_version: savedProject.version,
         snapshot_revision: savedProject.snapshot_revision,
+        database: db,
+        collection: coll,
       });
       setSavedProject(record);
       setMessage(`Approved v${record.version}`);
@@ -886,6 +894,8 @@ export default function Alignment({
     setError("");
     try {
       const { blob, filename } = await api.exportMolPage({
+        database: db,
+        collection: coll,
         molecules: pageMoleculesPayload(),
         columns: previewColumnCount(pageContentRef.current),
         filename: `${coll}.cdxml`,
@@ -906,6 +916,8 @@ export default function Alignment({
     setError("");
     try {
       const { blob, filename } = await api.exportMolBulk({
+        database: db,
+        collection: coll,
         molecules: pageMoleculesPayload(),
         format,
         filename: format === "sdf" ? `${coll}.sdf` : `${coll}_structures.zip`,

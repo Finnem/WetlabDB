@@ -12,6 +12,8 @@ from wetlabdb.settings import Settings
 from wetlabdb.storage.local import get_local_client
 from wetlabdb.storage.mongo import MongoClientAdapter
 
+API_MUTATION_HEADER = "X-WetlabDB-Request"
+
 
 @pytest.fixture(params=["local", "mongomock"])
 def backend(request, tmp_path, sample_compounds):
@@ -29,12 +31,13 @@ def backend(request, tmp_path, sample_compounds):
     settings = Settings(
         mode=mode,
         data_dir=str(tmp_path),
-        session_secret="test-secret-not-for-production",
+        session_secret="parity-test-session-secret-32chars-min",
         admin_user="admin",
         admin_password="adminpass",
     )
     auth.bootstrap(settings.admin_user, settings.admin_password)
-    auth.create_user("user", "userpass", admin=False)
+    auth.create_user("user", "userpass", admin=False, kind="student")
+    auth.create_user("emp", "emppass", admin=False, kind="employee")
 
     db = client["WetlabDB"]
     coll = db.create_collection("Compounds")
@@ -63,12 +66,12 @@ def app(backend):
 @pytest.fixture
 def raw_client(app):
     """Unauthenticated TestClient."""
-    return TestClient(app)
+    return TestClient(app, headers={API_MUTATION_HEADER: "1"})
 
 
 @pytest.fixture
 def admin_client(app):
-    client = TestClient(app)
+    client = TestClient(app, headers={API_MUTATION_HEADER: "1"})
     response = client.post(
         "/api/login", json={"username": "admin", "password": "adminpass"}
     )
@@ -78,9 +81,19 @@ def admin_client(app):
 
 @pytest.fixture
 def user_client(app):
-    client = TestClient(app)
+    client = TestClient(app, headers={API_MUTATION_HEADER: "1"})
     response = client.post(
         "/api/login", json={"username": "user", "password": "userpass"}
+    )
+    assert response.status_code == 200, response.text
+    return client
+
+
+@pytest.fixture
+def employee_client(app):
+    client = TestClient(app, headers={API_MUTATION_HEADER: "1"})
+    response = client.post(
+        "/api/login", json={"username": "emp", "password": "emppass"}
     )
     assert response.status_code == 200, response.text
     return client

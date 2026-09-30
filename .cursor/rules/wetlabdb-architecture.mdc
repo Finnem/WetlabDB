@@ -1,0 +1,38 @@
+---
+description: WetlabDB architecture, security hardening, and definition of done
+alwaysApply: true
+---
+
+# WetlabDB architecture policy
+
+**Source of truth:** [sar_alignment_handoff_v1/wetlabdb-local-llm-instructions.md](../sar_alignment_handoff_v1/wetlabdb-local-llm-instructions.md)
+
+Read that document before non-trivial backend, storage, auth, or deployment changes.
+
+## Non-negotiables
+
+- **Modular monolith:** routes/UI → services → storage ports. No microservices or large new frameworks.
+- **Storage parity:** behaviour consistent between local JSON and MongoDB; extend `tests/parity/` for shared capabilities.
+- **Tkinter:** keep working; do not duplicate authorization or business rules in `wetlabdb/ui` only.
+- **Changes:** small, independently testable steps; do not mix unrelated features with security/refactors.
+- **Data:** no irreversible schema/data migrations without a documented rollback plan.
+
+## Execution order (security backlog)
+
+1. Catalog identifier validation and filesystem containment (P0.1)
+2. Secrets, cookie/TLS settings, Compose defaults (P0.2)
+3. Upload limits, request validation, login throttling, CSRF strategy (P0.3)
+4. Audit logging and recovery design (P1)
+5. Authorization grants design (P1)
+6. Pagination, observability, CI (P2)
+
+Do not start P1+ until P0 is complete unless the user explicitly reprioritizes.
+
+**P1 status:** complete (audit, grants, recovery). **P2:** largely complete — checklist [`docs/p2-handoff-checklist.md`](../docs/p2-handoff-checklist.md); local JSON [`docs/p2-local-json-mode.md`](../docs/p2-local-json-mode.md); Mongo indexes [`docs/p2-storage-indexes.md`](../docs/p2-storage-indexes.md).
+
+## Definition of done (each change)
+
+- Server-side validation at trusted boundaries; useful errors without leaking paths/secrets/stack traces.
+- Relevant unit and API/parity tests for both storage modes where applicable.
+- `pytest` and frontend build pass; update README / `.env.example` when config changes.
+- Summarize: files changed, tests run, migrations, known limits, next priority.

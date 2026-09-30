@@ -31,9 +31,16 @@ class User:
     username: str
     password_hash: str
     admin: bool = False
+    kind: str = "student"
 
     def public_dict(self) -> dict:
-        return {"username": self.username, "admin": self.admin}
+        kind = "employee" if self.admin else (self.kind or "student")
+        return {
+            "username": self.username,
+            "admin": self.admin,
+            "kind": kind,
+            "can_manage_permissions": bool(self.admin) or kind == "employee",
+        }
 
 
 class UserStore(Protocol):
@@ -123,6 +130,7 @@ def _row_to_user(row: dict) -> User:
         username=str(row.get("username") or ""),
         password_hash=str(row.get("password_hash") or ""),
         admin=bool(row.get("admin")),
+        kind=str(row.get("kind") or "student"),
     )
 
 
@@ -131,6 +139,7 @@ def _user_to_row(user: User) -> dict:
         "username": user.username,
         "password_hash": user.password_hash,
         "admin": bool(user.admin),
+        "kind": "employee" if user.admin else (user.kind or "student"),
     }
 
 
@@ -172,9 +181,16 @@ class AuthService:
             return None
         if not username or not password:
             return None
-        return self.create_user(username, password, admin=True)
+        return self.create_user(username, password, admin=True, kind="employee")
 
-    def create_user(self, username: str, password: str, *, admin: bool = False) -> User:
+    def create_user(
+        self,
+        username: str,
+        password: str,
+        *,
+        admin: bool = False,
+        kind: str = "student",
+    ) -> User:
         username = (username or "").strip()
         if not username:
             raise AuthError("Username is required")
@@ -182,10 +198,12 @@ class AuthService:
             raise AuthError("Password is required")
         if self.get(username) is not None:
             raise AuthError(f"User '{username}' already exists")
+        resolved_kind = "employee" if admin else ("employee" if kind == "employee" else "student")
         user = User(
             username=username,
             password_hash=_HASHER.hash(password),
             admin=bool(admin),
+            kind=resolved_kind,
         )
         self._store.upsert(user)
         return user
@@ -196,6 +214,7 @@ class AuthService:
         *,
         password: str | None = None,
         admin: bool | None = None,
+        kind: str | None = None,
     ) -> User:
         user = self.get(username)
         if user is None:
@@ -204,6 +223,10 @@ class AuthService:
             user.password_hash = _HASHER.hash(password)
         if admin is not None:
             user.admin = bool(admin)
+        if kind is not None and not user.admin:
+            user.kind = "employee" if kind == "employee" else "student"
+        if user.admin:
+            user.kind = "employee"
         self._store.upsert(user)
         return user
 

@@ -65,6 +65,19 @@ def test_find_filters(client):
     assert len(coll.find()) == 3
 
 
+def test_find_page_stable_order(client):
+    db = client["TestDB"]
+    coll = db.create_collection("Paged")
+    ids = [coll.insert_one({"n": i}).inserted_id for i in range(5)]
+    page1 = coll.find_page(limit=2)
+    assert len(page1) == 2
+    page2 = coll.find_page(limit=2, after_id=str(page1[-1]["_id"]))
+    assert len(page2) == 2
+    seen = {str(d["_id"]) for d in page1 + page2}
+    assert len(seen) == 4
+    assert str(ids[0]) in seen
+
+
 def test_no_match_returns_zero_counts(client):
     coll = client["TestDB"].create_collection("Empty")
     coll.insert_one({"a": 1})

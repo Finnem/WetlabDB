@@ -19,7 +19,10 @@ from wetlabdb.storage.base import (
     InsertResult,
     UpdateResult,
 )
-from wetlabdb.storage.ids import PYMONGO_AVAILABLE
+from wetlabdb.storage.ids import PYMONGO_AVAILABLE, coerce_id
+from wetlabdb.services.compound_meta import DELETED_AT
+from wetlabdb.storage.compound_queries import merge_cursor
+from wetlabdb.storage.pagination import memory_find_page
 
 
 def _id_equal(left, right) -> bool:
@@ -43,6 +46,56 @@ def _matches(doc: dict, filt: dict | None) -> bool:
 class _MongoCollection:
     def __init__(self, raw: Any) -> None:
         self._raw = raw
+
+    def _prefer_memory_pagination(self) -> bool:
+        return type(self._raw).__module__.startswith("mongomock")
+
+    def find_page(
+        self,
+        *,
+        limit: int,
+        after_id: str | None = None,
+        exclude_soft_deleted: bool = True,
+        projection: dict | None = None,
+    ) -> list[dict]:
+        capped = max(1, int(limit))
+        if self._prefer_memory_pagination():
+            return memory_find_page(
+                self.find(),
+                limit=capped,
+                after_id=after_id,
+                exclude_soft_deleted=exclude_soft_deleted,
+            )
+        try:
+            query: dict = {}
+            if exclude_soft_deleted:
+                query[DELETED_AT] = {"$exists": False}
+            if after_id:
+                query["_id"] = {"$gt": coerce_id(after_id)}
+            kwargs: dict = {}
+            if projection:
+                kwargs["projection"] = projection
+            cursor = self._raw.find(query, **kwargs).sort("_id", 1).limit(capped)
+            return list(cursor)
+        except (TypeError, NotImplementedError):
+            return memory_find_page(
+                self.find(),
+                limit=capped,
+                after_id=after_id,
+                exclude_soft_deleted=exclude_soft_deleted,
+            )
+
+    def count_active_documents(self) -> int:
+        if self._prefer_memory_pagination():
+            return len(
+                memory_find_page(self.find(), limit=10**9, exclude_soft_deleted=True)
+            )
+        try:
+            return int(self._raw.count_documents({DELETED_AT: {"$exists": False}}))
+        except (TypeError, NotImplementedError):
+            return len(
+                memory_find_page(self.find(), limit=10**9, exclude_soft_deleted=True)
+            )
 
     def find(self, filter: dict | None = None) -> list[dict]:
         docs = list(self._raw.find())
@@ -80,8 +133,43 @@ class _MongoCollection:
         result = self._raw.delete_one({"_id": existing["_id"]})
         return DeleteResult(deleted_count=int(result.deleted_count))
 
+    def supports_server_query(self) -> bool:
+        return not self._prefer_memory_pagination()
+
     def count_documents(self, filter: dict | None = None) -> int:
         return int(self._raw.count_documents(filter or {}))
+
+    def find_query_page(
+        self,
+        query: dict,
+        *,
+        limit: int,
+        after_id: str | None = None,
+        projection: dict | None = None,
+    ) -> list[dict]:
+        """Server-side filter + ``_id`` pagination (falls back in mongomock)."""
+        capped = max(1, int(limit))
+        if self._prefer_memory_pagination():
+            return memory_find_page(
+                self.find(),
+                limit=capped,
+                after_id=after_id,
+                exclude_soft_deleted=True,
+            )
+        try:
+            merged = merge_cursor(query, after_id)
+            kwargs: dict = {}
+            if projection:
+                kwargs["projection"] = projection
+            cursor = self._raw.find(merged, **kwargs).sort("_id", 1).limit(capped)
+            return list(cursor)
+        except (TypeError, NotImplementedError):
+            return memory_find_page(
+                self.find(),
+                limit=capped,
+                after_id=after_id,
+                exclude_soft_deleted=True,
+            )
 
 
 class _MongoDatabase:

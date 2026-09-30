@@ -19,6 +19,7 @@ csvs/
 # Personal notes and access docs
 *.pdf
 *sar_alignment_handoff**
+docs/
 
 # Python
 .venv/
@@ -29,6 +30,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
+.cache/
 .ruff_cache/
 .tox/
 .coverage

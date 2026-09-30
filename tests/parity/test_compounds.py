@@ -85,6 +85,16 @@ def test_text_filter_all_columns(admin_client):
     assert names == {"Aspirin"}
 
 
+def test_list_fields_projection(admin_client):
+    body = admin_client.get(
+        "/api/databases/WetlabDB/collections/Compounds/compounds",
+        params={"fields": "Name,SMILES", "q": "aspirin", "column": "All"},
+    ).json()
+    assert len(body["compounds"]) == 1
+    row = body["compounds"][0]
+    assert set(row.keys()) == {"_id", "Name", "SMILES"}
+
+
 def test_text_filter_specific_column(admin_client):
     hits = admin_client.get(
         "/api/databases/WetlabDB/collections/Compounds/compounds",

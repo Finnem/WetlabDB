@@ -27,8 +27,14 @@ from wetlabdb.storage.base import (
     InsertResult,
     UpdateResult,
 )
-from wetlabdb.storage.ids import new_local_id
+from wetlabdb.storage.ids import coerce_id, new_local_id
+from wetlabdb.storage.pagination import memory_find_page
 from wetlabdb.storage.json_codec import local_json_default
+from wetlabdb.storage.path_safe import (
+    assert_path_contained,
+    safe_collection_file,
+    safe_database_dir,
+)
 
 # Process-local locks so concurrent requests in a single uvicorn worker cannot
 # clobber each other's read-modify-write of the same JSON collection file.
@@ -157,15 +163,34 @@ class LocalCollection:
     def count_documents(self, filter: dict | None = None) -> int:
         return len(self.find(filter))
 
+    def find_page(
+        self,
+        *,
+        limit: int,
+        after_id: str | None = None,
+        exclude_soft_deleted: bool = True,
+        projection: dict | None = None,
+    ) -> list[dict]:
+        with self._locked():
+            docs = self._load()
+        return memory_find_page(
+            docs,
+            limit=limit,
+            after_id=after_id,
+            exclude_soft_deleted=exclude_soft_deleted,
+        )
+
 
 class LocalDatabase:
     """Filesystem folder treated as a database of JSON collections."""
 
-    def __init__(self, db_dir: str) -> None:
-        self.db_dir = db_dir
+    def __init__(self, db_dir: str, root_dir: str) -> None:
+        self.db_dir = assert_path_contained(db_dir, root_dir)
+        self.root_dir = os.path.realpath(root_dir)
 
     def __getitem__(self, name: str) -> LocalCollection:
-        return LocalCollection(os.path.join(self.db_dir, f"{name}.json"))
+        path = safe_collection_file(self.db_dir, self.root_dir, name)
+        return LocalCollection(path)
 
     def list_collection_names(self) -> list[str]:
         if not os.path.isdir(self.db_dir):
@@ -178,7 +203,7 @@ class LocalDatabase:
 
     def create_collection(self, name: str) -> LocalCollection:
         os.makedirs(self.db_dir, exist_ok=True)
-        path = os.path.join(self.db_dir, f"{name}.json")
+        path = safe_collection_file(self.db_dir, self.root_dir, name)
         if os.path.exists(path):
             raise ValueError(f"Collection '{name}' already exists")
         with open(path, "w", encoding="utf-8") as f:
@@ -186,7 +211,7 @@ class LocalDatabase:
         return LocalCollection(path)
 
     def drop_collection(self, name: str) -> None:
-        path = os.path.join(self.db_dir, f"{name}.json")
+        path = safe_collection_file(self.db_dir, self.root_dir, name)
         if os.path.exists(path):
             os.remove(path)
 
@@ -199,7 +224,8 @@ class LocalClient:
         os.makedirs(self.root_dir, exist_ok=True)
 
     def __getitem__(self, name: str) -> LocalDatabase:
-        return LocalDatabase(os.path.join(self.root_dir, name))
+        db_dir = safe_database_dir(self.root_dir, name)
+        return LocalDatabase(db_dir, self.root_dir)
 
     def list_database_names(self) -> list[str]:
         if not os.path.isdir(self.root_dir):
@@ -211,9 +237,9 @@ class LocalClient:
         )
 
     def drop_database(self, name: str) -> None:
-        path = os.path.join(self.root_dir, name)
-        if os.path.isdir(path):
-            shutil.rmtree(path)
+        db_dir = safe_database_dir(self.root_dir, name)
+        if os.path.isdir(db_dir):
+            shutil.rmtree(db_dir)
 
     def close(self) -> None:  # pragma: no cover - no-op for compatibility
         pass

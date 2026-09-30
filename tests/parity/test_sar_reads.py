@@ -64,18 +64,20 @@ def test_alignment_run_requires_auth(raw_client):
     assert response.status_code == 401
 
 
-def test_alignment_project_approve_and_lock(user_client):
-    listed = user_client.get(
+def test_alignment_project_approve_and_lock(employee_client):
+    listed = employee_client.get(
         "/api/databases/WetlabDB/collections/Compounds/compounds"
     ).json()["compounds"]
     aspirin = next(c for c in listed if c["Name"] == "Aspirin")
     cid = aspirin["_id"]
 
-    run = user_client.post(
+    run = employee_client.post(
         "/api/alignment/run",
         json={
             "project_id": "WetlabDB",
             "series_id": "Compounds",
+            "database": "WetlabDB",
+            "collection": "Compounds",
             "compound_ids": [cid],
             "assay_ids": [],
             "reference_id": cid,
@@ -83,11 +85,13 @@ def test_alignment_project_approve_and_lock(user_client):
         },
     ).json()
 
-    created = user_client.post(
+    created = employee_client.post(
         "/api/alignment-projects",
         json={
             "project_id": "WetlabDB",
             "series_id": "Compounds",
+            "database": "WetlabDB",
+            "collection": "Compounds",
             "compound_ids": [cid],
             "assay_ids": [],
             "reference_id": cid,
@@ -101,16 +105,18 @@ def test_alignment_project_approve_and_lock(user_client):
     body = created.json()
     pid = body["id"]
 
-    approved = user_client.post(
+    approved = employee_client.post(
         f"/api/alignment-projects/{pid}/approve",
         json={
             "expected_version": body["version"],
             "snapshot_revision": run["snapshot_revision"],
+            "database": "WetlabDB",
+            "collection": "Compounds",
         },
     )
     assert approved.status_code == 200
 
-    listed = user_client.get(
+    listed = employee_client.get(
         "/api/alignment-projects",
         params={"project_id": "WetlabDB", "series_id": "Compounds"},
     )
@@ -119,11 +125,13 @@ def test_alignment_project_approve_and_lock(user_client):
     assert pid in ids
     assert listed.json()["projects"][0]["compound_count"] >= 1
 
-    blocked = user_client.patch(
+    blocked = employee_client.patch(
         f"/api/alignment-projects/{pid}",
         json={
             "expected_version": approved.json()["version"],
             "draft_solution": {**run, "user_message": "mutated"},
+            "database": "WetlabDB",
+            "collection": "Compounds",
         },
     )
     assert blocked.status_code == 409
@@ -136,18 +144,20 @@ def test_sar_limits(user_client):
     assert "S01" in body["status_case_messages"]
 
 
-def test_alignment_run_same_scaffold(user_client):
-    listed = user_client.get(
+def test_alignment_run_same_scaffold(employee_client):
+    listed = employee_client.get(
         "/api/databases/WetlabDB/collections/Compounds/compounds"
     ).json()["compounds"]
     aspirin = next(c for c in listed if c["Name"] == "Aspirin")
     cid = aspirin["_id"]
 
-    response = user_client.post(
+    response = employee_client.post(
         "/api/alignment/run",
         json={
             "project_id": "WetlabDB",
             "series_id": "Compounds",
+            "database": "WetlabDB",
+            "collection": "Compounds",
             "compound_ids": [cid],
             "assay_ids": [],
             "reference_id": cid,

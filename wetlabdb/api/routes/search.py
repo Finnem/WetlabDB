@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -48,18 +48,30 @@ def search_metrics(_: User = Depends(get_current_user)):
     }
 
 
+@router.get("/search/limits")
+def search_limits(request: Request, _: User = Depends(get_current_user)):
+    settings = request.app.state.settings
+    return {
+        "max_compounds": settings.search_max_compounds,
+        "chem_wall_timeout_sec": settings.chem_wall_timeout_sec,
+    }
+
+
 @router.post("/databases/{database}/collections/{collection}/search/similarity")
 def similarity_search(
     body: SimilarityBody,
     svc: SearchService = Depends(search_for),
     _: User = Depends(get_current_user),
 ):
+    from wetlabdb.api.metrics import record_operation
+
     hits = svc.similarity(
         body.query,
         cutoff=body.cutoff,
         metric=body.metric,
         sort_all=body.sort_all,
     )
+    record_operation("search.similarity")
     return {"hits": [_hit_payload(h) for h in hits]}
 
 
@@ -69,7 +81,10 @@ def substructure_search(
     svc: SearchService = Depends(search_for),
     _: User = Depends(get_current_user),
 ):
+    from wetlabdb.api.metrics import record_operation
+
     hits = svc.substructure(body.query)
+    record_operation("search.substructure")
     return {
         "hits": [
             {
