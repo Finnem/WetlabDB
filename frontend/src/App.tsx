@@ -4,6 +4,7 @@ import Browser from "./pages/Browser";
 import Login from "./pages/Login";
 import Search from "./pages/Search";
 import Users from "./pages/Users";
+import Alignment from "./pages/Alignment";
 import type { User } from "./types";
 
 type Page = "browse" | "search" | "users";
@@ -14,6 +15,7 @@ export default function App() {
   const [page, setPage] = useState<Page>("browse");
   const [db, setDb] = useState(localStorage.getItem("wetlabdb.db") || "");
   const [coll, setColl] = useState(localStorage.getItem("wetlabdb.coll") || "");
+  const [exportIds, setExportIds] = useState<string[] | null>(null);
 
   useEffect(() => {
     api
@@ -63,11 +65,30 @@ export default function App() {
           Log out
         </button>
       </header>
-      {page === "browse" && (
-        <Browser user={user} db={db} coll={coll} onDb={setDb} onColl={setColl} />
-      )}
-      {page === "search" && <Search db={db} coll={coll} />}
-      {page === "users" && user.admin && <Users />}
+      <div className="shell-body">
+        {page === "browse" && (
+          <Browser
+            user={user}
+            db={db}
+            coll={coll}
+            onDb={setDb}
+            onColl={setColl}
+            onExportMolecules={(ids) => setExportIds(ids)}
+          />
+        )}
+        {page === "search" && (
+          <Search db={db} coll={coll} onExportMolecules={(ids) => setExportIds(ids)} />
+        )}
+        {page === "users" && user.admin && <Users />}
+        {exportIds && db && coll && (
+          <Alignment
+            db={db}
+            coll={coll}
+            initialSelectedIds={exportIds}
+            onClose={() => setExportIds(null)}
+          />
+        )}
+      </div>
     </div>
   );
 }

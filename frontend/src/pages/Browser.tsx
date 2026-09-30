@@ -32,12 +32,14 @@ export default function Browser({
   coll,
   onDb,
   onColl,
+  onExportMolecules,
 }: {
   user: User;
   db: string;
   coll: string;
   onDb: (name: string) => void;
   onColl: (name: string) => void;
+  onExportMolecules: (ids: string[]) => void;
 }) {
   const [schema, setSchema] = useState<CompoundSchema | null>(null);
   const [databases, setDatabases] = useState<string[]>([]);
@@ -60,7 +62,6 @@ export default function Browser({
   const [showColumns, setShowColumns] = useState(false);
   const [csvImport, setCsvImport] = useState<{ file: File; headers: string[] } | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
-  const [molExporting, setMolExporting] = useState(false);
 
   async function loadCatalog() {
     const dbs = (await api.databases()).databases;
@@ -126,26 +127,6 @@ export default function Browser({
       }
       return next;
     });
-  }
-
-  async function downloadMolZip() {
-    if (!db || !coll || selectedIds.size === 0) return;
-    setMolExporting(true);
-    setError("");
-    try {
-      const { blob, filename } = await api.exportMolZip(db, coll, Array.from(selectedIds));
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-      setMessage(`Downloaded ${filename}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "MOL export failed");
-    } finally {
-      setMolExporting(false);
-    }
   }
 
   useEffect(() => {
@@ -284,10 +265,10 @@ export default function Browser({
           <button
             type="button"
             className="secondary"
-            disabled={selectedIds.size === 0 || molExporting}
-            onClick={() => downloadMolZip()}
+            disabled={selectedIds.size === 0}
+            onClick={() => onExportMolecules(Array.from(selectedIds))}
           >
-            {molExporting ? "Exporting…" : "Download Mol"}
+            Export Molecules
           </button>
           <label className="file-button">
             Import CSV

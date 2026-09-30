@@ -18,6 +18,7 @@ csvs/
 
 # Personal notes and access docs
 *.pdf
+*sar_alignment_handoff**
 
 # Python
 .venv/

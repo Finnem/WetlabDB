@@ -49,3 +49,62 @@ def test_mol_export_unparseable_smiles_400(admin_client):
         json={"ids": [doc_id]},
     )
     assert response.status_code == 400
+
+
+def test_mol_page_returns_single_molfile(admin_client):
+    response = admin_client.post(
+        "/api/mol/page",
+        json={
+            "molecules": [
+                {"id": "a", "name": "Benzene", "smiles": "c1ccccc1"},
+                {"id": "b", "name": "Toluene", "smiles": "c1ccccc1C"},
+            ],
+            "columns": 2,
+            "filename": "series.mol",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert "molfile" in response.headers.get("content-type", "")
+    assert "series.mol" in response.headers.get("content-disposition", "")
+    text = response.content.decode("utf-8")
+    assert "M  END" in text
+    assert "$$$$" not in text
+    from rdkit import Chem
+
+    mol = Chem.MolFromMolBlock(text, sanitize=True, removeHs=False)
+    assert mol is not None
+    assert mol.GetNumAtoms() == 6 + 7
+
+
+def test_mol_page_cdxml_includes_names(admin_client):
+    response = admin_client.post(
+        "/api/mol/page",
+        json={
+            "molecules": [
+                {"id": "a", "name": "Benzene", "smiles": "c1ccccc1"},
+                {"id": "b", "name": "Toluene", "smiles": "c1ccccc1C"},
+            ],
+            "columns": 2,
+            "filename": "series.cdxml",
+            "format": "cdxml",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert "series.cdxml" in response.headers.get("content-disposition", "")
+    text = response.content.decode("utf-8")
+    assert 'BondLength="14.40"' in text
+    assert "Benzene" in text
+    assert "Toluene" in text
+    from rdkit import Chem
+
+    mols = Chem.MolsFromCDXML(text)
+    assert mols is not None
+    assert len(mols) == 2
+
+
+def test_mol_page_unparseable_400(admin_client):
+    response = admin_client.post(
+        "/api/mol/page",
+        json={"molecules": [{"id": "bad", "smiles": "???"}]},
+    )
+    assert response.status_code == 400

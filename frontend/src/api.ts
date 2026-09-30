@@ -1,7 +1,16 @@
 import type {
   Compound,
   CompoundSchema,
+  SarAssayField,
+  SarProject,
+  SarSeries,
+  AlignmentRunResult,
+  AlignmentProjectRecord,
+  AlignmentProjectSummary,
+  CorePreviewResult,
+  DepictResult,
   SearchMetrics,
+  SeriesSnapshot,
   SimilarityHit,
   SubstructureHit,
   User,
@@ -155,6 +164,241 @@ export const api = {
     const filename = match?.[1] || "compounds_aligned.zip";
     return { blob, filename };
   },
+  exportMolPage: async (body: {
+    molecules: { id?: string; name?: string; smiles?: string; molblock?: string }[];
+    columns?: number;
+    filename?: string;
+    format?: "mol" | "cdxml";
+  }) => {
+    const response = await fetch("/api/mol/page", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response));
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get("content-disposition") || "";
+    const match = /filename="([^"]+)"/.exec(disposition);
+    const filename = match?.[1] || "figure.mol";
+    return { blob, filename };
+  },
+  sarProjects: (q = "", cursor?: string, limit = 50) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (q) params.set("q", q);
+    if (cursor) params.set("cursor", cursor);
+    const qs = params.toString();
+    return request<{ projects: SarProject[]; next_cursor: string | null }>(
+      `/api/projects${qs ? `?${qs}` : ""}`
+    );
+  },
+  sarSeries: (projectId: string, cursor?: string, limit = 50) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) params.set("cursor", cursor);
+    const qs = params.toString();
+    return request<{ series: SarSeries[]; next_cursor: string | null }>(
+      `/api/projects/${encodeURIComponent(projectId)}/series${qs ? `?${qs}` : ""}`
+    );
+  },
+  sarSnapshot: (
+    projectId: string,
+    seriesId: string,
+    assayIds: string[],
+    compoundIds: string[] = []
+  ) => {
+    const params = new URLSearchParams();
+    if (assayIds.length) params.set("assays", assayIds.join(","));
+    if (compoundIds.length) params.set("ids", compoundIds.join(","));
+    const qs = params.toString();
+    return request<SeriesSnapshot>(
+      `/api/projects/${encodeURIComponent(projectId)}/series/${encodeURIComponent(seriesId)}${qs ? `?${qs}` : ""}`
+    );
+  },
+  sarAssayFields: () =>
+    request<{ assay_fields: SarAssayField[] }>("/api/sar/assay-fields"),
+  sarCorePreview: (body: {
+    reference_smiles: string;
+    core_atoms: number[];
+    molecules: { id: string; smiles: string }[];
+    ignore_bond_order?: boolean;
+    atom_modes?: Record<string, string>;
+    remap_smarts?: string;
+  }) =>
+    request<CorePreviewResult>("/api/sar/core-preview", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  sarCoreAnalogGeneralize: (body: {
+    reference_smiles: string;
+    core_atoms: number[];
+    atom_modes?: Record<string, string>;
+    analog_smiles: string;
+    analog_atom_index: number;
+    ignore_bond_order?: boolean;
+  }) =>
+    request<{
+      ok: boolean;
+      message: string;
+      core_atoms: number[];
+      atom_modes: Record<string, string>;
+      mapped_ref_atom: number | null;
+    }>("/api/sar/core-analog-generalize", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  sarGuessCore: (body: {
+    reference_id?: string;
+    molecules: { id: string; smiles: string }[];
+    ignore_bond_order?: boolean;
+  }) =>
+    request<{
+      smarts: string;
+      source_id: string;
+      core_atoms: number[];
+      atom_modes: Record<string, string>;
+      message: string;
+    }>("/api/sar/guess-core", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  sarDepict: (body: {
+    smiles: string;
+    width?: number;
+    height?: number;
+    highlight?: number[];
+    selected?: number[];
+    fragment_atoms?: number[];
+    molblock?: string;
+    core_atom_modes?: Record<string, string>;
+    query_labels?: boolean;
+  }) =>
+    request<DepictResult>("/api/sar/depict", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  sarRotatePoses: (body: {
+    degrees: number;
+    molecules: { id: string; smiles?: string; molblock?: string }[];
+  }) =>
+    request<{ poses: { id: string; molblock: string }[] }>("/api/sar/rotate-poses", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  sarRunAlignment: (body: {
+    project_id: string;
+    series_id: string;
+    compound_ids: string[];
+    assay_ids: string[];
+    reference_id: string;
+    mode?: "same_scaffold" | "ring_atom_replacements" | "scaffold_replacement";
+    core_smarts?: string;
+    ignore_bond_order?: boolean;
+    scaffold_element_mode?: "from_smarts" | "element_agnostic";
+    poses?: { id: string; molblock: string }[];
+  }) =>
+    request<AlignmentRunResult>("/api/alignment/run", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  sarRunAlignmentProgress: async (
+    body: {
+      project_id: string;
+      series_id: string;
+      compound_ids: string[];
+      assay_ids: string[];
+      reference_id: string;
+      mode?: "same_scaffold" | "ring_atom_replacements" | "scaffold_replacement";
+      core_smarts?: string;
+      ignore_bond_order?: boolean;
+      scaffold_element_mode?: "from_smarts" | "element_agnostic";
+      poses?: { id: string; molblock: string }[];
+    },
+    onProgress?: (event: { phase: string; done: number; total: number }) => void
+  ): Promise<AlignmentRunResult> => {
+    const response = await fetch("/api/alignment/run-progress", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      throw new Error(await parseError(response));
+    }
+    if (!response.body) {
+      throw new Error("No progress stream from server");
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let result: AlignmentRunResult | undefined;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line) as {
+          phase: string;
+          done?: number;
+          total?: number;
+          result?: AlignmentRunResult;
+          detail?: string;
+        };
+        if (event.phase === "done" && event.result) {
+          result = event.result;
+        } else if (event.phase === "error") {
+          throw new Error(event.detail || "Alignment failed");
+        } else {
+          onProgress?.({
+            phase: event.phase,
+            done: event.done ?? 0,
+            total: event.total ?? 0,
+          });
+        }
+      }
+    }
+    if (!result) {
+      throw new Error("Alignment stream ended without a result");
+    }
+    return result;
+  },
+  sarCreateAlignmentProject: (body: {
+    project_id: string;
+    series_id: string;
+    compound_ids: string[];
+    assay_ids: string[];
+    reference_id: string;
+    mode: string;
+    core_smarts: string;
+    snapshot_revision: string;
+    draft_solution: AlignmentRunResult;
+  }) =>
+    request<AlignmentProjectRecord>("/api/alignment-projects", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  sarListAlignmentProjects: (projectId: string, seriesId: string, limit = 12) => {
+    const params = new URLSearchParams({
+      project_id: projectId,
+      series_id: seriesId,
+      limit: String(limit),
+    });
+    return request<{ projects: AlignmentProjectSummary[] }>(`/api/alignment-projects?${params}`);
+  },
+  sarGetAlignmentProject: (projectId: string) =>
+    request<AlignmentProjectRecord>(`/api/alignment-projects/${encodeURIComponent(projectId)}`),
+  sarApproveAlignmentProject: (
+    projectId: string,
+    body: { expected_version: number; snapshot_revision: string }
+  ) =>
+    request<AlignmentProjectRecord>(`/api/alignment-projects/${encodeURIComponent(projectId)}/approve`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   importCsv: async (
     db: string,
     coll: string,

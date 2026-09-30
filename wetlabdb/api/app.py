@@ -14,6 +14,7 @@ from wetlabdb.api.routes import compounds as compound_routes
 from wetlabdb.api.routes import csv as csv_routes
 from wetlabdb.api.routes import mol as mol_routes
 from wetlabdb.api.routes import meta as meta_routes
+from wetlabdb.api.routes import sar as sar_routes
 from wetlabdb.api.routes import search as search_routes
 from wetlabdb.services.auth import AuthService
 from wetlabdb.settings import Settings
@@ -64,6 +65,14 @@ def create_app(
     app.state.client = client
     app.state.auth = auth
 
+    from wetlabdb.sar.sidecar import SarAlignmentSidecar
+
+    app.state.sar_sidecar = SarAlignmentSidecar.from_settings(
+        is_local=settings.is_local,
+        data_dir=settings.data_dir,
+        client=client,
+    )
+
     prefix = "/api"
     app.include_router(meta_routes.router, prefix=prefix)
     app.include_router(auth_routes.router, prefix=prefix)
@@ -72,6 +81,7 @@ def create_app(
     app.include_router(search_routes.router, prefix=prefix)
     app.include_router(csv_routes.router, prefix=prefix)
     app.include_router(mol_routes.router, prefix=prefix)
+    app.include_router(sar_routes.router, prefix=prefix)
 
     dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
     if mount_spa and dist.is_dir():
